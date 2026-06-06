@@ -9,7 +9,7 @@ import config
 
 
 def parse_time(text):
-    
+
     text = text.strip()
     for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
         try:
@@ -71,6 +71,7 @@ def read_lines_forward(path):
 
 
 def main():
+    
     print(f"CSV_PATH={config.CSV_PATH}")
     print(f"REVERSE={config.REVERSE}")
     print(f"TOPIC={config.KAFKA_TOPIC}")
@@ -111,7 +112,22 @@ def main():
 
   
         if config.PAYLOAD_FORMAT == "json":
-            value = json.dumps(row, ensure_ascii=False).encode("utf-8")
+            msg = {
+                "captured_time": row.get("Captured Time", ""),
+                "uploaded_time": row.get("Uploaded Time", ""),
+                "latitude":      row.get("Latitude", ""),
+                "longitude":     row.get("Longitude", ""),
+                "value":         row.get("Value", ""),
+                "unit":          row.get("Unit", ""),
+                "location_name": row.get("Location Name", ""),
+                "device_id":     row.get("Device ID", ""),
+                "md5":           row.get("MD5Sum", ""),
+                "height":        row.get("Height", ""),
+                "surface":       row.get("Surface", ""),
+                "radiation":     row.get("Radiation", ""),
+                "loader_id":     row.get("Loader ID", ""),
+            }
+            value = json.dumps(msg, ensure_ascii=False).encode("utf-8")
         else:
             value = line.encode("utf-8")
 
