@@ -33,7 +33,11 @@ services:
     command: >
       "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic raw-radiation --partitions 12 --replication-factor 1 &&
-      echo 'Topic raw-radiation created with 12 partitions.'"
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
+      --topic processed-radiation --partitions 12 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
+      --topic radiation-alerts --partitions 4 --replication-factor 1 &&
+      echo 'All topics created.'"
 
   producer:
       build: ./producer
@@ -42,6 +46,46 @@ services:
           condition: service_completed_successfully
       volumes:
         - ./data:/data:ro
+  
+  flink-jobmanager:
+    build: ./flink-job
+    container_name: flink-jobmanager
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        rest.bind-address: 0.0.0.0
+      KAFKA_BOOTSTRAP: kafka:29092
+      ALERT_THRESHOLD: "100"
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+
+  flink-taskmanager:
+    build: ./flink-job
+    container_name: flink-taskmanager
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+  
+  flink-submitter:
+    build: ./flink-job
+    depends_on:
+      - flink-jobmanager
+      - flink-taskmanager
+    command:
+      - bash
+      - -c
+      - |
+        until bash -c 'echo > /dev/tcp/flink-jobmanager/8081' 2>/dev/null; do echo "waiting for jobmanager..."; sleep 3; done
+        sleep 5
+        flink run -m flink-jobmanager:8081 -pyclientexec python3 -pyexec python3 -pyfs /opt/flink/usrlib/config.py -py /opt/flink/usrlib/flink_job.py
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -50,7 +94,6 @@ services:
       - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092   # ← fix: internal listener
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
-      - kafka  
- 
+      - kafka
