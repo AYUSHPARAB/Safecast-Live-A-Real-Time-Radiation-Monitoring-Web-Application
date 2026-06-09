@@ -6,6 +6,8 @@ from pyflink.common import WatermarkStrategy, Duration, Types
 from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream.functions import KeyedProcessFunction
+from pyflink.datastream.state import ValueStateDescriptor
 from pyflink.datastream.connectors.kafka import (
     KafkaSource, KafkaOffsetsInitializer,
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
@@ -40,8 +42,8 @@ def parse(raw: str):
         return {
             "captured_at": parse_time(d.get("captured_time")),
             "uploaded_at": d.get("uploaded_time"),
-            "lat":         _num(d.get("latitude")),
-            "lon":         _num(d.get("longitude")),
+            "latitude":    _num(d.get("latitude")),
+            "longitude":   _num(d.get("longitude")),
             "cpm":         _num(d.get("value")),
             "unit":        str(d.get("unit", "")).strip().lower(),
             "device_id":   str(d.get("device_id", "")).strip(),
@@ -56,9 +58,27 @@ def enrich(e):
     return e
 
 
+def sensor_key(e):
+    return "loc:%.4f,%.4f" % (e["latitude"], e["longitude"])
+
+
 class CapturedTimestampAssigner(TimestampAssigner):
     def extract_timestamp(self, value, record_timestamp):
         return value["captured_at"]
+
+
+class LatestPerSensor(KeyedProcessFunction):
+
+    def open(self, runtime_context):
+        self.last_ts = runtime_context.get_state(
+            ValueStateDescriptor("last_captured", Types.LONG())
+        )
+
+    def process_element(self, e, ctx):
+        prev = self.last_ts.value()
+        if prev is None or e["captured_at"] > prev:
+            self.last_ts.update(e["captured_at"])
+            yield dict(e, sensor_key=sensor_key(e))
 
 
 def make_sink(topic):
@@ -94,7 +114,7 @@ def main():
         source, WatermarkStrategy.no_watermarks(), "kafka-raw-radiation"
     )
 
-    # Operator: parse, drop missing & junk data , attach event times
+    # Operator: parse, drop missing & junk data, attach event times
     parsed = (
         raw_stream
         .map(parse, output_type=Types.PICKLED_BYTE_ARRAY())
@@ -109,31 +129,42 @@ def main():
     )
     timed = parsed.assign_timestamps_and_watermarks(watermark)
 
-    # Operator: Discard empty & invalid readings
+    # Operator: discard empty & invalid readings
     clean = timed.filter(
         lambda e: (
             e["unit"] == "cpm"
             and e["cpm"] is not None
             and e["cpm"] > 0
-            and e["lat"] is not None and e["lon"] is not None
-            and -90 <= e["lat"] <= 90
-            and -180 <= e["lon"] <= 180
+            and e["latitude"] is not None and e["longitude"] is not None
+            and -90 <= e["latitude"] <= 90
+            and -180 <= e["longitude"] <= 180
         )
     )
 
     enriched = clean.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
 
-    # Sink A: all -> processed-radiation topic
+    # Operator: latest radiation per location 
+    latest = (
+        enriched
+        .key_by(sensor_key, key_type=Types.STRING())
+        .process(LatestPerSensor(), output_type=Types.PICKLED_BYTE_ARRAY())
+    )
+
+    # Sink A: all clean readings -> radiation-clean topic
     (enriched
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_NORMAL_TOPIC)))
 
-    # Sink B: threshold-alert -> radiation-alerts topic
+    # Sink B: readings above threshold -> radiation-alerts topic
     alerts = enriched.filter(lambda e: e["level"] == "danger")
     (alerts
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_ALERT_TOPIC)))
-    alerts.print()
+
+    # Sink C: latest reading per sensor from each location-> radiation-current topic
+    (latest
+        .map(lambda e: json.dumps(e), output_type=Types.STRING())
+        .sink_to(make_sink(config.KAFKA_LATEST_TOPIC)))
 
     env.execute("safecast-processing-pipeline")
 

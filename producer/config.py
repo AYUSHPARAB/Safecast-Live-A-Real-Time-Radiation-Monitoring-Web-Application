@@ -1,5 +1,5 @@
 KAFKA_BOOTSTRAP_SERVERS = "kafka:29092"
-KAFKA_TOPIC = "raw-radiation"
+KAFKA_TOPIC = "radiation-raw"
 
 CSV_PATH = "/data/measurements-out.csv"
 

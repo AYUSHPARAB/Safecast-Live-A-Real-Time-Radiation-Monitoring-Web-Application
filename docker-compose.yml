@@ -32,11 +32,13 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
-      --topic raw-radiation --partitions 12 --replication-factor 1 &&
+      --topic radiation-raw --partitions 12 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
-      --topic processed-radiation --partitions 12 --replication-factor 1 &&
+      --topic radiation-clean --partitions 12 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-alerts --partitions 4 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
+      --topic radiation-current --partitions 12 --replication-factor 1 && 
       echo 'All topics created.'"
 
   producer:
