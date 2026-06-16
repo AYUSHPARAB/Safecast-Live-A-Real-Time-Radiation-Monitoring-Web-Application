@@ -12,6 +12,9 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSource, KafkaOffsetsInitializer,
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
 )
+from pyflink.datastream.window import TumblingEventTimeWindows
+from pyflink.datastream.functions import AggregateFunction
+from pyflink.common import Time
 
 import config
 
@@ -94,6 +97,74 @@ class LatestPerSensor(KeyedProcessFunction):
             self.last_ts.update(e["captured_at"])
             yield dict(e, sensor_key=sensor_key(e))
 
+class AlertDedup(KeyedProcessFunction):
+    """
+    Per sensor: emit alert only if cooldown expired OR severity changed.
+    """
+    COOLDOWN_MS = 10 * 60 * 1000  #10 minutes cool down period
+
+    def open(self, runtime_context):
+        self.last_ts = runtime_context.get_state(
+            ValueStateDescriptor("alert_last_ts", Types.LONG()))
+        self.last_level = runtime_context.get_state(
+            ValueStateDescriptor("alert_last_level", Types.STRING()))
+
+    def process_element(self, e, ctx):
+        now      = e["captured_at"]
+        prev_ts  = self.last_ts.value()
+        prev_lvl = self.last_level.value()
+        cur_lvl  = e["level"]
+
+        cooldown_expired = (prev_ts is None or (now - prev_ts) > self.COOLDOWN_MS)
+        level_changed    = (prev_lvl != cur_lvl)
+
+        if cooldown_expired or level_changed:
+            self.last_ts.update(now)
+            self.last_level.update(cur_lvl)
+            yield e
+
+class GlobalStatsAggregate(AggregateFunction):
+    """
+    Tumbling 30-second window over all sensors.
+    Emits one JSON stats message when each window closes.
+    """
+
+    def create_accumulator(self):
+        return {
+            "count":   0,
+            "total":   0.0,
+            "max_cpm": 0.0,
+            "devices": set(),
+            "alerts":  0,
+        }
+
+    def add(self, value, acc):
+        acc["count"]   += 1
+        acc["total"]   += value["cpm"]
+        acc["max_cpm"]  = max(acc["max_cpm"], value["cpm"])
+        acc["devices"].add(value["device_id"])
+        if value["level"] != "safe":
+            acc["alerts"] += 1
+        return acc
+
+    def get_result(self, acc):
+        avg = round(acc["total"] / acc["count"], 2) if acc["count"] else 0.0
+        return json.dumps({
+            "type":           "global_stats",
+            "avg_cpm":        avg,
+            "max_cpm":        round(acc["max_cpm"], 2),
+            "active_sensors": len(acc["devices"]),
+            "alert_count":    acc["alerts"],
+            "reading_count":  acc["count"],
+        })
+
+    def merge(self, a, b):
+        a["count"]   += b["count"]
+        a["total"]   += b["total"]
+        a["max_cpm"]  = max(a["max_cpm"], b["max_cpm"])
+        a["devices"].update(b["devices"])
+        a["alerts"]  += b["alerts"]
+        return a
 
 def make_sink(topic):
     return (
@@ -173,18 +244,32 @@ def main():
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_NORMAL_TOPIC)))
 
-    # Sink B: readings above threshold -> radiation-alerts topic
-    alerts = enriched.filter(lambda e: e["level"] == "danger")
-    (alerts
+    # Sink B: readings above threshold -> radiation-alerts topic,alerts with dedup
+
+    (enriched
+        .filter(lambda e: e["level"] != "safe")
+        .key_by(sensor_key, key_type=Types.STRING())
+        .process(AlertDedup(), output_type=Types.PICKLED_BYTE_ARRAY())
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
-        .sink_to(make_sink(config.KAFKA_ALERT_TOPIC)))
+        .sink_to(make_sink(config.KAFKA_ALERT_TOPIC))
+    )
+
 
     # Sink C: latest reading per sensor from each location-> radiation-current topic
     (latest
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_LATEST_TOPIC)))
+    
+    # Sink D: global stats every 30 seconds 
+    (enriched
+        .window_all(TumblingEventTimeWindows.of(Time.seconds(30)))
+        .aggregate(GlobalStatsAggregate(), output_type=Types.STRING())
+        .sink_to(make_sink(config.KAFKA_STATS_TOPIC))
+    )    
 
     env.execute("safecast-processing-pipeline")
+
+
 
 
 if __name__ == "__main__":

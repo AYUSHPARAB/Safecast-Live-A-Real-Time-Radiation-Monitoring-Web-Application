@@ -12,3 +12,5 @@ ALERT_THRESHOLD_CPM = float(os.getenv("ALERT_THRESHOLD", "100"))
 PARALLELISM = int(os.getenv("FLINK_PARALLELISM", "4"))
 
 KAFKA_CONNECTOR_JAR = "file:///opt/flink/lib/flink-sql-connector-kafka-1.17.1.jar"
+
+KAFKA_STATS_TOPIC = os.getenv("KAFKA_STATS_TOPIC", "radiation-stats")
