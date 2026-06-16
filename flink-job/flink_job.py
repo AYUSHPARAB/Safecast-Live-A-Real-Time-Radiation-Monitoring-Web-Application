@@ -47,6 +47,8 @@ def parse(raw: str):
             "cpm":         _num(d.get("value")),
             "unit":        str(d.get("unit", "")).strip().lower(),
             "device_id":   str(d.get("device_id", "")).strip(),
+            "location_name": str(d.get("location_name") or "").strip(), 
+            "md5":           str(d.get("md5") or "").strip(),                        
         }
     except (ValueError, TypeError):
         return None
@@ -54,12 +56,24 @@ def parse(raw: str):
 
 def enrich(e):
     e = dict(e)
-    e["level"] = "danger" if e["cpm"] >= config.ALERT_THRESHOLD_CPM else "safe"
+    cpm = e["cpm"]
+    t   = config.ALERT_THRESHOLD_CPM
+    if   cpm >= t * 3: e["level"] = "high"
+    elif cpm >= t * 2: e["level"] = "elevated"
+    elif cpm >= t:     e["level"] = "warning"
+    else:              e["level"] = "safe"
     return e
 
 
 def sensor_key(e):
-    return "loc:%.4f,%.4f" % (e["latitude"], e["longitude"])
+    dev = e.get("device_id", "").strip()
+    if dev:
+        return "dev:" + dev
+    lat = e.get("latitude")
+    lon = e.get("longitude")
+    if lat is not None and lon is not None:
+        return "geo:%.4f,%.4f" % (lat, lon)
+    return e.get("md5", "unknown")
 
 
 class CapturedTimestampAssigner(TimestampAssigner):
@@ -131,15 +145,19 @@ def main():
 
     # Operator: discard empty & invalid readings
     clean = timed.filter(
-        lambda e: (
-            e["unit"] == "cpm"
-            and e["cpm"] is not None
-            and e["cpm"] > 0
-            and e["latitude"] is not None and e["longitude"] is not None
-            and -90 <= e["latitude"] <= 90
-            and -180 <= e["longitude"] <= 180
-        )
+    lambda e: (
+        e["unit"] == "cpm"
+        and e["cpm"] is not None
+        and e["cpm"] > 0
+        and e["cpm"] < 10_000
+        and e["latitude"]  is not None
+        and e["longitude"] is not None
+        and -90  <= e["latitude"]  <= 90
+        and -180 <= e["longitude"] <= 180
+        and not (e["latitude"] == 0.0
+                 and e["longitude"] == 0.0)
     )
+)
 
     enriched = clean.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
 
