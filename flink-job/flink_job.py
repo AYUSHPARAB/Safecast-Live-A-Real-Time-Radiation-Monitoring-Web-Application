@@ -16,7 +16,13 @@ from pyflink.datastream.window import TumblingEventTimeWindows
 from pyflink.datastream.functions import AggregateFunction
 from pyflink.common import Time
 
+from pyflink.datastream.functions import BroadcastProcessFunction
+from pyflink.datastream.state import MapStateDescriptor
+
 import config
+
+CONFIG_STATE = MapStateDescriptor(
+    "config_state", Types.STRING(), Types.FLOAT())
 
 LOW_MS  = int(datetime(2011, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 HIGH_MS = int(datetime(2027, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
@@ -78,6 +84,17 @@ def sensor_key(e):
         return "geo:%.4f,%.4f" % (lat, lon)
     return e.get("md5", "unknown")
 
+def in_bounding_box(e):
+    """
+    Returns True if bounding box is disabled OR
+    the reading falls within the configured lat/lon box.
+    """
+    if not config.BBOX_ENABLED:
+        return True
+    return (
+        config.BBOX_LAT_MIN <= e["latitude"]  <= config.BBOX_LAT_MAX
+        and config.BBOX_LON_MIN <= e["longitude"] <= config.BBOX_LON_MAX
+    )
 
 class CapturedTimestampAssigner(TimestampAssigner):
     def extract_timestamp(self, value, record_timestamp):
@@ -166,6 +183,73 @@ class GlobalStatsAggregate(AggregateFunction):
         a["alerts"]  += b["alerts"]
         return a
 
+class DynamicConfig(BroadcastProcessFunction):
+    """
+    Listens to radiation-config topic for runtime config changes.
+    Applies updated threshold and bounding box to the enriched stream.
+    
+    Config message format (from P4 settings panel):
+        {"threshold": 50.0}
+        {"bbox_enabled": 1.0, "bbox_lat_min": 30.0, "bbox_lat_max": 46.0,
+         "bbox_lon_min": 129.0, "bbox_lon_max": 146.0}
+    """
+
+    def process_element(self, e, ctx, out):
+        # Called for every radiation reading
+        state = ctx.get_broadcast_state(CONFIG_STATE)
+
+        # Read threshold — fall back to config.py value if not set yet
+        threshold = state.get("threshold")
+        if threshold is None:
+            threshold = config.ALERT_THRESHOLD_CPM
+
+        # Read bbox settings
+        bbox_enabled = state.get("bbox_enabled")
+
+        # Apply bounding box if enabled via broadcast
+        if bbox_enabled:
+            lat_min = state.get("bbox_lat_min") or config.BBOX_LAT_MIN
+            lat_max = state.get("bbox_lat_max") or config.BBOX_LAT_MAX
+            lon_min = state.get("bbox_lon_min") or config.BBOX_LON_MIN
+            lon_max = state.get("bbox_lon_max") or config.BBOX_LON_MAX
+            if not (lat_min <= e["latitude"]  <= lat_max
+                    and lon_min <= e["longitude"] <= lon_max):
+                return   # outside box — drop silently
+
+        # Re-apply threshold with current dynamic value
+        cpm = e["cpm"]
+        if   cpm >= threshold * 3: e["level"] = "high"
+        elif cpm >= threshold * 2: e["level"] = "elevated"
+        elif cpm >= threshold:     e["level"] = "warning"
+        else:                      e["level"] = "safe"
+
+        out.collect(e)
+
+    def process_broadcast_element(self, config_msg, ctx, out):
+        # Called when a new config message arrives from radiation-config topic
+        try:
+            msg = json.loads(config_msg)
+            state = ctx.get_broadcast_state(CONFIG_STATE)
+
+            if "threshold" in msg:
+                new_t = float(msg["threshold"])
+                state.put("threshold", new_t)
+                print(f"[CONFIG] Threshold updated to {new_t} CPM")
+
+            if "bbox_enabled" in msg:
+                state.put("bbox_enabled", float(msg["bbox_enabled"]))
+                print(f"[CONFIG] BBox enabled: {msg['bbox_enabled']}")
+
+            if "bbox_lat_min" in msg:
+                state.put("bbox_lat_min", float(msg["bbox_lat_min"]))
+                state.put("bbox_lat_max", float(msg["bbox_lat_max"]))
+                state.put("bbox_lon_min", float(msg["bbox_lon_min"]))
+                state.put("bbox_lon_max", float(msg["bbox_lon_max"]))
+                print(f"[CONFIG] BBox updated: {msg}")
+
+        except (ValueError, KeyError) as ex:
+            print(f"[CONFIG] Bad config message: {ex}")
+
 def make_sink(topic):
     return (
         KafkaSink.builder()
@@ -199,6 +283,19 @@ def main():
         source, WatermarkStrategy.no_watermarks(), "kafka-raw-radiation"
     )
 
+    # Config source — reads runtime config changes from radiation-config topic
+    config_source = env.from_source(
+        KafkaSource.builder()
+        .set_bootstrap_servers(config.KAFKA_BOOTSTRAP)
+        .set_topics(config.KAFKA_CONFIG_TOPIC)
+        .set_group_id("flink-config-consumer")
+        .set_starting_offsets(KafkaOffsetsInitializer.latest())
+        .set_value_only_deserializer(SimpleStringSchema())
+        .build(),
+        WatermarkStrategy.no_watermarks(),
+        "config-source"
+    )
+
     # Operator: parse, drop missing & junk data, attach event times
     parsed = (
         raw_stream
@@ -216,37 +313,49 @@ def main():
 
     # Operator: discard empty & invalid readings
     clean = timed.filter(
-    lambda e: (
-        e["unit"] == "cpm"
-        and e["cpm"] is not None
-        and e["cpm"] > 0
-        and e["cpm"] < 10_000
-        and e["latitude"]  is not None
-        and e["longitude"] is not None
-        and -90  <= e["latitude"]  <= 90
-        and -180 <= e["longitude"] <= 180
-        and not (e["latitude"] == 0.0
-                 and e["longitude"] == 0.0)
-    )
+        lambda e: (
+            e["unit"] == "cpm"
+            and e["cpm"] is not None
+            and e["cpm"] > 0
+            and e["cpm"] < 10_000
+            and e["latitude"]  is not None
+            and e["longitude"] is not None
+            and -90  <= e["latitude"]  <= 90
+            and -180 <= e["longitude"] <= 180
+            and not (e["latitude"] == 0.0
+                    and e["longitude"] == 0.0)
+        )
 )
 
-    enriched = clean.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
+    # Operator: geospatial bounding-box filter
+    bounded = clean.filter(in_bounding_box)
 
+    enriched = bounded.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
+
+    # Broadcast config stream to all parallel instances
+    config_broadcast = config_source.broadcast(CONFIG_STATE)
+
+    # Apply dynamic config operator
+    dynamic = (
+        enriched
+        .connect(config_broadcast)
+        .process(DynamicConfig(), output_type=Types.PICKLED_BYTE_ARRAY())
+    )
     # Operator: latest radiation per location 
     latest = (
-        enriched
+        dynamic
         .key_by(sensor_key, key_type=Types.STRING())
         .process(LatestPerSensor(), output_type=Types.PICKLED_BYTE_ARRAY())
     )
 
     # Sink A: all clean readings -> radiation-clean topic
-    (enriched
+    (dynamic
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_NORMAL_TOPIC)))
 
     # Sink B: readings above threshold -> radiation-alerts topic,alerts with dedup
 
-    (enriched
+    (dynamic
         .filter(lambda e: e["level"] != "safe")
         .key_by(sensor_key, key_type=Types.STRING())
         .process(AlertDedup(), output_type=Types.PICKLED_BYTE_ARRAY())
@@ -261,7 +370,7 @@ def main():
         .sink_to(make_sink(config.KAFKA_LATEST_TOPIC)))
     
     # Sink D: global stats every 30 seconds 
-    (enriched
+    (dynamic
         .window_all(TumblingEventTimeWindows.of(Time.seconds(30)))
         .aggregate(GlobalStatsAggregate(), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_STATS_TOPIC))

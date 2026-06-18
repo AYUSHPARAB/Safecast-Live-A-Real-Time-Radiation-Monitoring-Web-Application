@@ -14,3 +14,12 @@ PARALLELISM = int(os.getenv("FLINK_PARALLELISM", "4"))
 KAFKA_CONNECTOR_JAR = "file:///opt/flink/lib/flink-sql-connector-kafka-1.17.1.jar"
 
 KAFKA_STATS_TOPIC = os.getenv("KAFKA_STATS_TOPIC", "radiation-stats")
+
+# Bounding box filter (set to None to disable and process whole world)
+BBOX_LAT_MIN = float(os.getenv("BBOX_LAT_MIN", -90))
+BBOX_LAT_MAX = float(os.getenv("BBOX_LAT_MAX",  90))
+BBOX_LON_MIN = float(os.getenv("BBOX_LON_MIN", -180))
+BBOX_LON_MAX = float(os.getenv("BBOX_LON_MAX",  180))
+BBOX_ENABLED = os.getenv("BBOX_ENABLED", "false").lower() == "true"
+
+KAFKA_CONFIG_TOPIC = os.getenv("KAFKA_CONFIG_TOPIC", "radiation-config")
