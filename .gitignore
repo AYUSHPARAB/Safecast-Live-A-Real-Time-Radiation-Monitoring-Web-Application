@@ -3,3 +3,7 @@ __pycache__/
 .env/
 *.pyc
 *.pyo
+scratch.py
+try_*.py
+test_manual.py
+
