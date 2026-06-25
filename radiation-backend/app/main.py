@@ -1,11 +1,12 @@
 import asyncio
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from .config import settings
 from .mock import run_mock
 from .routes import points, stats, alerts
+from .cache import cache
+from .ws_manager import manager
+from .models import WSMessage
 
 
 @asynccontextmanager
@@ -37,3 +38,22 @@ app.include_router(alerts.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok", "mock_mode": settings.mock_mode}
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await manager.connect(ws)
+    try:
+        #send data when the browser connects so the map is not empty
+        await ws.send_json(
+            WSMessage(channel="map", data={"points": cache.get_all_sensors()}).model_dump()
+        )
+        latest = cache.get_stats()
+        if latest:
+            await ws.send_json(WSMessage(channel="stats", data=latest).model_dump())
+
+        # keep the line open — we don't expect messages from the client
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(ws)
