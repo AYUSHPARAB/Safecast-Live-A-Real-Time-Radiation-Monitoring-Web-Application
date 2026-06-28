@@ -5,7 +5,8 @@ import random
 import time
 
 from .cache import cache
-from .models import SensorCurrentReading, RadiationAlert, GlobalStats
+from .ws_manager import manager
+from .models import SensorCurrentReading, RadiationAlert, GlobalStats, WSMessage
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +79,21 @@ async def run_mock(interval: float = 1.0) -> None:
     tick = 0
     try:
         while True:
+
             for _ in range(random.randint(2, 5)):
                 try:
                     point = make_reading()
                     cache.put_point(point)
+                    await manager.broadcast(
+                     WSMessage(channel="current", data=point.model_dump(mode="json")).model_dump()
+                    )
 
-                    if point.cpm > 300:                 # only high readings alert
-                        cache.put_alert(make_alert(point))
+                    if point.cpm > 300:
+                        alert=make_alert(point)                 # only high readings alert
+                        cache.put_alert(alert)
+                        await manager.broadcast(
+                            WSMessage(channel="alerts", data=alert.model_dump(mode="json")).model_dump()
+                        )
                         logger.info(
                             "ALERT %s cpm=%.1f level=%s",
                             point.device_id, point.cpm, point.level,
@@ -94,12 +103,17 @@ async def run_mock(interval: float = 1.0) -> None:
 
             if tick % 10 == 0:                          # stats every ~10 ticks
                 try:
-                    cache.put_stats(make_stats())
+                    stats = make_stats()
+                    cache.put_stats(stats)
+                    await manager.broadcast(
+                        WSMessage(channel="stats", data=stats.model_dump(mode="json")).model_dump()
+                    )
                 except Exception:
                     logger.exception("Bad stats — skipping")
 
             tick += 1
             await asyncio.sleep(interval)
+            
     except asyncio.CancelledError:
         logger.info("Mock generator stopped")
         raise
