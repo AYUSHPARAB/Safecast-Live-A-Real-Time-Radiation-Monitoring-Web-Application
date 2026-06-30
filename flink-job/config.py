@@ -23,3 +23,8 @@ BBOX_LON_MAX = float(os.getenv("BBOX_LON_MAX",  180))
 BBOX_ENABLED = os.getenv("BBOX_ENABLED", "false").lower() == "true"
 
 KAFKA_CONFIG_TOPIC = os.getenv("KAFKA_CONFIG_TOPIC", "radiation-config")
+
+SPIKE_JUMP_RATIO = float(os.getenv("SPIKE_JUMP_RATIO", 2.5))
+SPIKE_AVG_RATIO  = float(os.getenv("SPIKE_AVG_RATIO", 2.5))
+SPIKE_EMA_ALPHA  = float(os.getenv("SPIKE_EMA_ALPHA", 0.2))
+KAFKA_SPIKE_TOPIC = os.getenv("KAFKA_SPIKE_TOPIC", "radiation-spikes")

@@ -140,6 +140,48 @@ class AlertDedup(KeyedProcessFunction):
             self.last_level.update(cur_lvl)
             yield e
 
+class SpikeDetector(KeyedProcessFunction):
+    """
+    Per sensor: detects sudden CPM increases using two signals:
+      1. Point-to-point: current reading vs immediately previous reading
+      2. Rolling average: current reading vs sensor's exponential moving average
+    Emits a spike event when EITHER ratio is exceeded.
+    """
+
+    def open(self, runtime_context):
+        self.prev_cpm = runtime_context.get_state(
+            ValueStateDescriptor("spike_prev_cpm", Types.FLOAT()))
+        self.rolling_avg = runtime_context.get_state(
+            ValueStateDescriptor("spike_rolling_avg", Types.FLOAT()))
+
+    def process_element(self, e, ctx):
+        cpm = e["cpm"]
+        prev = self.prev_cpm.value()
+        avg  = self.rolling_avg.value()
+
+        point_jump = False
+        avg_jump   = False
+
+        if prev is not None and prev > 0:
+            point_jump = (cpm / prev) >= config.SPIKE_JUMP_RATIO
+
+        if avg is not None and avg > 0:
+            avg_jump = (cpm / avg) >= config.SPIKE_AVG_RATIO
+
+        if point_jump or avg_jump:
+            spike = dict(e)
+            spike["spike_type"] = "point_and_average" if (point_jump and avg_jump) else (
+                                   "point_to_point" if point_jump else "rolling_average")
+            spike["previous_cpm"]    = prev
+            spike["rolling_avg_cpm"] = round(avg, 2) if avg is not None else None
+            spike["jump_ratio"]      = round(cpm / prev, 2) if prev else None
+            yield spike
+
+        self.prev_cpm.update(cpm)
+        new_avg = cpm if avg is None else (
+            config.SPIKE_EMA_ALPHA * cpm + (1 - config.SPIKE_EMA_ALPHA) * avg)
+        self.rolling_avg.update(new_avg)
+
 class GlobalStatsAggregate(AggregateFunction):
     """
     Tumbling 30-second window over all sensors.
@@ -375,6 +417,14 @@ def main():
         .aggregate(GlobalStatsAggregate(), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_STATS_TOPIC))
     )    
+
+    # Sink E: spike detection — sudden CPM increases per sensor
+    (dynamic
+    .key_by(sensor_key, key_type=Types.STRING())
+    .process(SpikeDetector(), output_type=Types.PICKLED_BYTE_ARRAY())
+    .map(lambda e: json.dumps(e), output_type=Types.STRING())
+    .sink_to(make_sink(config.KAFKA_SPIKE_TOPIC))
+    )
 
     env.execute("safecast-processing-pipeline")
 
