@@ -201,7 +201,7 @@ class GlobalStatsAggregate(AggregateFunction):
         acc["count"]   += 1
         acc["total"]   += value["cpm"]
         acc["max_cpm"]  = max(acc["max_cpm"], value["cpm"])
-        acc["devices"].add(value["device_id"])
+        acc["devices"].add(sensor_key(value))
         if value["level"] != "safe":
             acc["alerts"] += 1
         return acc
