@@ -6,27 +6,31 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .mock import run_mock
-from .routes import points, stats, alerts
+from .routes import points, stats, alerts, history
 from .cache import cache
 from .ws_manager import manager
 from .models import WSMessage
-
+from . import db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ---- startup ----
+    await db.connect_db()
+
     task = None
     if settings.mock_mode:
         task = asyncio.create_task(run_mock())
 
     yield   # app serves requests here for its whole life
-
+    # ----- shutdown ----
     if task:
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
+
+    await db.close_db()
 
 app = FastAPI(
     title="Radiation tracking backend",
@@ -45,6 +49,7 @@ app.add_middleware(
 app.include_router(points.router)
 app.include_router(stats.router)
 app.include_router(alerts.router)
+app.include_router(history.router)
 
 @app.get("/api/health")
 def health():
