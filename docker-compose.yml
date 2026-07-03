@@ -22,7 +22,6 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-      start_period: 45s
     environment:
       KAFKA_HEAP_OPTS: "-Xmx3G -Xms3G"
       KAFKA_BROKER_ID: 1
@@ -32,8 +31,6 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
   kafka-setup:
     image: confluentinc/cp-kafka:7.5.0
@@ -56,9 +53,6 @@ services:
       --topic radiation-config --partitions 1 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-spikes --partitions 4 --replication-factor 1 &&
-      echo 'warming up producer IDs' &&
-      echo 'warmup' | kafka-console-producer --bootstrap-server kafka:29092 --topic radiation-raw &&
-      kafka-console-consumer --bootstrap-server kafka:29092 --topic radiation-raw --from-beginning --max-messages 1 --timeout-ms 30000 &&
       echo 'All topics created.'"
 
   producer:
@@ -79,7 +73,6 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         rest.bind-address: 0.0.0.0
-        python.operator-chaining.enabled: false
       BBOX_ENABLED: "false"
       BBOX_LAT_MIN: "-90"
       BBOX_LAT_MAX: "90"
@@ -113,24 +106,11 @@ services:
       BBOX_LON_MIN: "-180"
       BBOX_LON_MAX: "180"
 
-  # flink-submitter:
-  #   build: ./flink-job
-  #   depends_on:
-  #     - flink-jobmanager
-  #     - flink-taskmanager
-  #   command:
-  #     - bash
-  #     - -c
-  #     - |
-  #       until bash -c 'echo > /dev/tcp/flink-jobmanager/8081' 2>/dev/null; do echo "waiting for jobmanager..."; sleep 3; done
-  #       sleep 5
-  #       flink run -m flink-jobmanager:8081 -pyclientexec python3 -pyexec python3 -pyfs /opt/flink/usrlib/config.py -py /opt/flink/usrlib/flink_job.py
   flink-submitter:
       build: ./flink-job
       environment:
         FLINK_PROPERTIES: |
           jobmanager.rpc.address: flink-jobmanager
-          python.operator-chaining.enabled: false
       depends_on:
         flink-jobmanager:
           condition: service_started
