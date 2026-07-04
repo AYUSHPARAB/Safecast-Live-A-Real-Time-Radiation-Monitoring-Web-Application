@@ -11,14 +11,7 @@ services:
     ports:
       - "9092:9092"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "kafka-topics",
-          "--bootstrap-server",
-          "localhost:9092",
-          "--list",
-        ]
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -29,7 +22,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
 
   kafka-setup:
     image: confluentinc/cp-kafka:7.5.0
@@ -47,21 +40,21 @@ services:
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-current --partitions 12 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
-      --topic radiation-stats --partitions 1 --replication-factor 1 &&
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
-      --topic radiation-config --partitions 1 --replication-factor 1 &&
+      --topic radiation-stats --partitions 4 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-spikes --partitions 4 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
+      --topic radiation-heatmap --partitions 4 --replication-factor 1 &&
       echo 'All topics created.'"
 
   producer:
-    build: ./producer
-    depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
-    volumes:
-      - ./data:/data:ro
-
+      build: ./producer
+      depends_on:
+        kafka-setup:
+          condition: service_completed_successfully
+      volumes:
+        - ./data:/data:ro
+  
   flink-jobmanager:
     build: ./flink-job
     container_name: flink-jobmanager
@@ -72,11 +65,6 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         rest.bind-address: 0.0.0.0
-      BBOX_ENABLED: "false"
-      BBOX_LAT_MIN: "-90"
-      BBOX_LAT_MAX: "90"
-      BBOX_LON_MIN: "-180"
-      BBOX_LON_MAX: "180"
       KAFKA_BOOTSTRAP: kafka:29092
       ALERT_THRESHOLD: "100"
     depends_on:
@@ -92,13 +80,8 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 4
-      BBOX_ENABLED: "false"
-      BBOX_LAT_MIN: "-90"
-      BBOX_LAT_MAX: "90"
-      BBOX_LON_MIN: "-180"
-      BBOX_LON_MAX: "180"
-
+        taskmanager.numberOfTaskSlots: 8
+  
   flink-submitter:
     build: ./flink-job
     depends_on:
