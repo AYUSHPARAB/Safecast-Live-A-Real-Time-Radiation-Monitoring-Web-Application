@@ -19,8 +19,7 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSource, KafkaOffsetsInitializer,
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
 )
-from pyflink.datastream.functions import BroadcastProcessFunction
-from pyflink.datastream.state import MapStateDescriptor
+from pyflink.datastream.functions import ProcessAllWindowFunction
 import config
 
 # Dynamic config — background thread polling radiation-config topic
@@ -313,7 +312,7 @@ class AttachCellMeta(ProcessWindowFunction):
     def process(self, key, ctx, aggregations):
         acc = next(iter(aggregations))
         avg = round(acc["total"] / acc["count"], 2) if acc["count"] else 0.0
-        yield json.dumps({
+        yield {                                    
             "type": "heatmap_cell",
             "geohash": key,
             "cell_lat": round(acc["clat"], 5),
@@ -321,9 +320,29 @@ class AttachCellMeta(ProcessWindowFunction):
             "avg_cpm": avg,
             "max_cpm": round(acc["max_cpm"], 2),
             "count": acc["count"],
-            "level": acc["worst"]
-        })
+            "level": acc["worst"],
+        }
         
+class TopNHotspots(ProcessAllWindowFunction):
+    """Rank all cells in the window by danger, keep worst N (non-safe only)."""
+    def process(self, ctx, cells):
+        dangerous = [c for c in cells if c["level"] != "safe"]
+        ranked = sorted(dangerous, key=lambda c: c["max_cpm"], reverse=True)[:config.TOP_N]
+        out = [{
+            "rank": i + 1,
+            "geohash": c["geohash"],
+            "lat": c["cell_lat"],
+            "lon": c["cell_lon"],
+            "max_cpm": c["max_cpm"],
+            "avg_cpm": c["avg_cpm"],
+            "level": c["level"],
+            "count": c["count"],
+        } for i, c in enumerate(ranked)]
+        yield json.dumps({
+            "type": "top_hotspots",
+            "count": len(out),
+            "hotspots": out,
+        })
 # class DynamicConfig(BroadcastProcessFunction):
 #     """
 #     Listens to radiation-config topic for runtime config changes.
@@ -498,6 +517,18 @@ def main():
         .process(LatestPerSensor(), output_type=Types.PICKLED_BYTE_ARRAY())
     )
 
+    # Heatmap cells (shared source for heatmap + top-N) ----
+    heatmap_cells = (
+        enriched
+        .map(add_geohash, output_type=Types.PICKLED_BYTE_ARRAY())
+        .key_by(lambda e: e["geohash"], key_type=Types.STRING())
+        .window(TumblingProcessingTimeWindows.of(Time.seconds(30)))
+        .aggregate(HeatmapAggregate(),
+                   window_function=AttachCellMeta(),
+                   accumulator_type=Types.PICKLED_BYTE_ARRAY(),
+                   output_type=Types.PICKLED_BYTE_ARRAY())   
+    )
+
     # Sink A: all clean readings -> radiation-clean topic
     (dynamic
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
@@ -535,18 +566,16 @@ def main():
     .sink_to(make_sink(config.KAFKA_SPIKE_TOPIC))
     )
 
-    # Sink F: geohash heatmap — per-cell blobs
-    (
-    enriched
-    .map(add_geohash, output_type=Types.PICKLED_BYTE_ARRAY())
-    .key_by(lambda e: e["geohash"], key_type=Types.STRING())
-    .window(TumblingProcessingTimeWindows.of(Time.seconds(30)))
-    .aggregate(HeatmapAggregate(),
-               window_function=AttachCellMeta(),
-               accumulator_type=Types.PICKLED_BYTE_ARRAY(),
-               output_type=Types.STRING())
-    .sink_to(make_sink(config.KAFKA_HEATMAP_TOPIC))
-    )
+    # Sink F: heatmap blobs -> radiation-heatmap
+    (heatmap_cells
+        .map(lambda e: json.dumps(e), output_type=Types.STRING())
+        .sink_to(make_sink(config.KAFKA_HEATMAP_TOPIC)))
+    
+    # Sink G: top-N dangerous hotspots -> radiation-top
+    (heatmap_cells
+        .window_all(TumblingProcessingTimeWindows.of(Time.seconds(30)))
+        .process(TopNHotspots(), output_type=Types.STRING())
+        .sink_to(make_sink(config.KAFKA_TOP_TOPIC)))
 
 
     env.execute("safecast-processing-pipeline")

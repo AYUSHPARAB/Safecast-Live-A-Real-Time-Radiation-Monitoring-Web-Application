@@ -31,3 +31,6 @@ KAFKA_SPIKE_TOPIC = os.getenv("KAFKA_SPIKE_TOPIC", "radiation-spikes")
 
 GEOHASH_PRECISION   = int(os.getenv("GEOHASH_PRECISION", 5))
 KAFKA_HEATMAP_TOPIC = os.getenv("KAFKA_HEATMAP_TOPIC", "radiation-heatmap")
+
+TOP_N            = int(os.getenv("TOP_N", 10))
+KAFKA_TOP_TOPIC  = os.getenv("KAFKA_TOP_TOPIC", "radiation-top")

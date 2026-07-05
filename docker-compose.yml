@@ -55,6 +55,8 @@ services:
       --topic radiation-heatmap --partitions 4 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-config --partitions 1 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
+      --topic radiation-top --partitions 1 --replication-factor 1 &&
       kafka-console-producer --bootstrap-server kafka:29092 --topic radiation-config <<< '{"threshold": 100.0}' &&
       echo 'All topics created.'"
 
