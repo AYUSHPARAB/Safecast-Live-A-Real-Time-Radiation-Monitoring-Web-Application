@@ -1,50 +1,79 @@
-from collections import deque
-from .config import settings
-from .models import SensorCurrentReading, RadiationAlert, GlobalStats
+import json
+from typing import Optional
 
-# A cache for storing sensor states, alerts, and global statistics.
+import redis.asyncio as redis
+
+from .config import settings
+from .models import SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell
+
+SENSOR_PREFIX = "sensor:"
+HEAT_PREFIX = "heat:"
+ALERTS_KEY = "alerts"
+STATS_KEY = "stats:current"
+
+
 class Cache:
     def __init__(self) -> None:
-        self.sensor_states: dict[str, SensorCurrentReading] = {}
-        self.recent_alerts: deque[RadiationAlert] = deque(maxlen=settings.max_alerts)
-        self.latest_global_stats: GlobalStats | None = None
+        self.r: redis.Redis = redis.from_url(settings.redis_url, decode_responses=True)
 
-        #Methods to update the cache with new data.
-    def put_point(self, reading: SensorCurrentReading) -> None:
-        self.sensor_states[reading.sensor_key] = reading
+    async def ping(self) -> bool:
+        return await self.r.ping()
 
-    def put_alert(self, alert: RadiationAlert) -> None:
-            # Add a new alert to the cache.
-            self.recent_alerts.append(alert)
+    async def close(self) -> None:
+        await self.r.aclose()
 
-    def put_stats(self, stats: GlobalStats) -> None:
-            # Update the latest global statistics.
-            self.latest_global_stats = stats
+    async def put_point(self, reading: SensorCurrentReading) -> None:
+        await self.r.set(
+            SENSOR_PREFIX + reading.sensor_key,
+            json.dumps(reading.model_dump(mode="json")),
+            ex=settings.sensor_ttl_seconds,
+        )
 
-        # Reads from the cache, called by RestAPI endpoints to serve data.
-    def get_all_sensors(self) -> list[dict]:
-            # Return a list of all current sensor readings in JSON Format.
-            return [s.model_dump(mode="json") for s in self.sensor_states.values()]
-        
-    def get_sensor(self, sensor_key: str) -> SensorCurrentReading | None:
-            # Return the latest reading for a sensor, or None is doesnt exist.
-            return self.sensor_states.get(sensor_key)
+    async def put_alert(self, alert: RadiationAlert) -> None:
+        await self.r.lpush(ALERTS_KEY, json.dumps(alert.model_dump(mode="json")))
+        await self.r.ltrim(ALERTS_KEY, 0, settings.max_alerts - 1)
 
-    def get_alerts(self, limit: int = 20) -> list[dict]:
-            # Return a list of recent alerts in JSON format, most recent first.
-            alerts = list(self.recent_alerts)
-            alerts.reverse()  # Show most recent alerts first
-            return [a.model_dump(mode="json") for a in alerts[:limit]]
-        
-    def get_stats(self) -> dict | None:
-        if self.latest_global_stats:
-            return self.latest_global_stats.model_dump(mode="json")
-        return None
-        
-    def sensor_count(self) -> int:
-            # Return the number of sensors currently in the cache.
-            return len(self.sensor_states)
-        
+    async def put_stats(self, stats: GlobalStats) -> None:
+        await self.r.set(STATS_KEY, json.dumps(stats.model_dump(mode="json", exclude_none=True)))
+
+    async def put_heat(self, cell: HeatmapCell) -> None:
+        await self.r.set(
+            HEAT_PREFIX + cell.geohash,
+            json.dumps(cell.model_dump(mode="json")),
+            ex=settings.sensor_ttl_seconds,
+        )
+
+    async def get_all_sensors(self) -> list[dict]:
+        keys = [k async for k in self.r.scan_iter(match=SENSOR_PREFIX + "*")]
+        if not keys:
+            return []
+        values = await self.r.mget(keys)
+        return [json.loads(v) for v in values if v is not None]
+
+    async def get_sensor(self, sensor_key: str) -> Optional[dict]:
+        v = await self.r.get(SENSOR_PREFIX + sensor_key)
+        return json.loads(v) if v is not None else None
+
+    async def get_alerts(self, limit: int = 20) -> list[dict]:
+        values = await self.r.lrange(ALERTS_KEY, 0, limit - 1)   
+        return [json.loads(v) for v in values]
+
+    async def get_stats(self) -> Optional[dict]:
+        v = await self.r.get(STATS_KEY)
+        return json.loads(v) if v is not None else None
+
+    async def get_all_heat(self) -> list[dict]:
+        keys = [k async for k in self.r.scan_iter(match=HEAT_PREFIX + "*")]
+        if not keys:
+            return []
+        values = await self.r.mget(keys)
+        return [json.loads(v) for v in values if v is not None]
+
+    async def sensor_count(self) -> int:
+        count = 0
+        async for _ in self.r.scan_iter(match=SENSOR_PREFIX + "*"):
+            count += 1
+        return count
+
 
 cache = Cache()
-

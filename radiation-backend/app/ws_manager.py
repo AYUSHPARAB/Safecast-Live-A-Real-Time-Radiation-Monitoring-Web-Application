@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
-    "Holds list of active websocket connections pushes messages to all connected browsers."
 
     def __init__(self) -> None:
         self.active: list[WebSocket] = []
@@ -22,7 +21,6 @@ class ConnectionManager:
             logger.info("WS disconnected (%d left)", len(self.active))
 
     async def broadcast(self, message: dict) -> None:
-        "Send a message to all connected browsers and drop the dead ones."
         dead: list[WebSocket] = []
         for ws in self.active:
             try:

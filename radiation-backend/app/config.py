@@ -3,11 +3,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="BACKEND_", extra="ignore")
 
     mock_mode: bool = True
     max_alerts: int = 200
 
+    redis_url: str = "redis://redis:6379/0"
+    sensor_ttl_seconds: int = 3600   # stale markers / heat cells drop off after this
+
+    kafka_bootstrap: str = "kafka:9092"
+    topic_current: str = "radiation-current"
+    topic_alerts: str = "radiation-alerts"
+    topic_stats: str = "radiation-stats"
+    topic_heatmap: str = "radiation-heatmap"
+    kafka_group: str = "backend"
+
+    cors_origins: list[str] = ["http://localhost:5173"]
+
 
 settings = Settings()
-

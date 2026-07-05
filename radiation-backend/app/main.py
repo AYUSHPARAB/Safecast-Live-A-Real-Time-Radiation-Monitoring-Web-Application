@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -11,15 +12,26 @@ from .cache import cache
 from .ws_manager import manager
 from .models import WSMessage
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ---- startup ----
+
+    try:
+        await cache.ping()
+        logger.info("Connected to Redis at %s", settings.redis_url)
+    except Exception:
+        logger.exception("Could not reach Redis at %s", settings.redis_url)
+
     task = None
     if settings.mock_mode:
         task = asyncio.create_task(run_mock())
+    else:
+        from .consumer import run_consumer
+        task = asyncio.create_task(run_consumer())
 
-    yield   # app serves requests here for its whole life
+    yield
 
     if task:
         task.cancel()
@@ -27,16 +39,14 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
+    await cache.close()
 
-app = FastAPI(
-    title="Radiation tracking backend",
-    version="0.1.0",
-    lifespan=lifespan,
-)
+
+app = FastAPI(title="Radiation tracking backend", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,25 +56,34 @@ app.include_router(points.router)
 app.include_router(stats.router)
 app.include_router(alerts.router)
 
+
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "mock_mode": settings.mock_mode}
+async def health():
+    try:
+        redis_ok = await cache.ping()
+    except Exception:
+        redis_ok = False
+    return {"status": "ok", "mock_mode": settings.mock_mode, "redis": redis_ok}
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await manager.connect(ws)
     try:
-        #send data when the browser connects so the map is not empty
         await ws.send_json(
-            WSMessage(channel="map", data={"points": cache.get_all_sensors()}).model_dump()
+            WSMessage(channel="map", data={"points": await cache.get_all_sensors()}).model_dump()
         )
-        latest = cache.get_stats()
+        heat = await cache.get_all_heat()
+        if heat:
+            await ws.send_json(WSMessage(channel="heatmap", data={"cells": heat}).model_dump())
+        latest = await cache.get_stats()
         if latest:
             await ws.send_json(WSMessage(channel="stats", data=latest).model_dump())
 
-        # keep the line open — we don't expect messages from the client
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
+        manager.disconnect(ws)
+    except Exception:
+        logger.exception("WS error — dropping connection")
         manager.disconnect(ws)
