@@ -5,3 +5,4 @@ pydantic-settings==2.14.1
 websockets==16.0
 aiokafka==0.11.0
 redis==8.0.1
+asyncpg==0.31.0
