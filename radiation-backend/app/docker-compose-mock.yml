@@ -1,0 +1,16 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    restart: unless-stopped
+  backend:
+    build: .
+    image: radiation-backend:mock
+    depends_on: [redis]
+    ports: ["8000:8000"]
+    environment:
+      BACKEND_MOCK_MODE: "true"
+      BACKEND_MAX_ALERTS: "200"
+      BACKEND_REDIS_URL: "redis://redis:6379/0"
+      BACKEND_CORS_ORIGINS: '["http://localhost:5173"]'
+    restart: unless-stopped

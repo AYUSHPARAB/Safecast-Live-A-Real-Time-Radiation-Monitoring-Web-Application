@@ -7,11 +7,11 @@ import time
 from .cache import cache
 from .ws_manager import manager
 from . import db
+from .config import settings
 from .models import SensorCurrentReading, RadiationAlert, GlobalStats, WSMessage
 
 logger = logging.getLogger(__name__)
 
-# (name, latitude, longitude) — fixed cities so fake sensors land in real places
 CITIES = [
     ("Tokyo",     35.6762, 139.6503),
     ("Hamburg",   53.5511,   9.9937),
@@ -20,7 +20,6 @@ CITIES = [
 
 
 def cpm_to_level(cpm: float) -> str:
-    """Mock decides the level. In the real system, Flink (P3) does this."""
     if cpm < 50:
         return "safe"
     if cpm < 100:
@@ -31,15 +30,13 @@ def cpm_to_level(cpm: float) -> str:
 
 
 def make_reading() -> SensorCurrentReading:
-    """Build ONE fake reading. Pure function — easy to reason about and test."""
     city, base_lat, base_lon = random.choice(CITIES)
     lat = round(base_lat + random.uniform(-0.05, 0.05), 5)
     lon = round(base_lon + random.uniform(-0.05, 0.05), 5)
     cpm = round(random.uniform(20, 400), 1)
     device_id = f"{city[:3].upper()}-{random.randint(1, 9999):04d}"
-
     return SensorCurrentReading(
-        captured_at=int(time.time() * 1000),   # milliseconds, per the contract
+        captured_at=int(time.time() * 1000),
         cpm=cpm,
         latitude=lat,
         longitude=lon,
@@ -51,7 +48,6 @@ def make_reading() -> SensorCurrentReading:
 
 
 def make_alert(point: SensorCurrentReading) -> RadiationAlert:
-    """Turn a high reading into an alert. level must be warning/elevated/high."""
     return RadiationAlert(
         captured_at=point.captured_at,
         cpm=point.cpm,
@@ -63,19 +59,19 @@ def make_alert(point: SensorCurrentReading) -> RadiationAlert:
     )
 
 
-def make_stats() -> GlobalStats:
-    """Fake a global stats snapshot."""
+async def make_stats() -> GlobalStats:
+    active = await cache.sensor_count()
+    alerts = await cache.get_alerts(limit=settings.max_alerts)
     return GlobalStats(
         avg_cpm=round(random.uniform(30, 150), 1),
         max_cpm=round(random.uniform(150, 400), 1),
-        active_sensors=cache.sensor_count() or random.randint(5, 20),
-        alert_count=len(cache.recent_alerts),
+        active_sensors=active or random.randint(5, 20),
+        alert_count=len(alerts),
         reading_count=random.randint(100, 5000),
     )
 
 
 async def run_mock(interval: float = 1.0) -> None:
-    """Forever-loop: runs in the background while FastAPI serves requests."""
     logger.info("Mock generator started (interval=%.1fs)", interval)
     tick = 0
     try:
@@ -84,32 +80,28 @@ async def run_mock(interval: float = 1.0) -> None:
             for _ in range(random.randint(2, 5)):
                 try:
                     point = make_reading()
-                    cache.put_point(point)
-                    await db.insert_reading(point)          # store in Postgres for history queries
-                    await manager.broadcast(                # send to all connected WebSocket clients
-                     WSMessage(channel="current", data=point.model_dump(mode="json")).model_dump()
+                    await cache.put_point(point)
+                    await manager.broadcast(
+                        WSMessage(channel="current",
+                                  data=point.model_dump(mode="json")).model_dump()
                     )
-
                     if point.cpm > 300:
-                        alert=make_alert(point)                 # only high readings alert
-                        cache.put_alert(alert)
-                        await db.insert_alert(alert)            # store in Postgres for history queries
-                        await manager.broadcast(                # send to all connected WebSocket clients
-                            WSMessage(channel="alerts", data=alert.model_dump(mode="json")).model_dump()
-                        )
-                        logger.info(
-                            "ALERT %s cpm=%.1f level=%s",
-                            point.device_id, point.cpm, point.level,
+                        alert = make_alert(point)
+                        await cache.put_alert(alert)
+                        await manager.broadcast(
+                            WSMessage(channel="alerts",
+                                      data=alert.model_dump(mode="json")).model_dump()
                         )
                 except Exception:
                     logger.exception("Bad reading — skipping")
 
-            if tick % 10 == 0:                          # stats every ~10 ticks
+            if tick % 10 == 0:
                 try:
-                    stats = make_stats()
-                    cache.put_stats(stats)
+                    stats = await make_stats()
+                    await cache.put_stats(stats)
                     await manager.broadcast(
-                        WSMessage(channel="stats", data=stats.model_dump(mode="json")).model_dump()
+                        WSMessage(channel="stats",
+                                  data=stats.model_dump(mode="json")).model_dump()
                     )
                 except Exception:
                     logger.exception("Bad stats — skipping")
@@ -120,3 +112,4 @@ async def run_mock(interval: float = 1.0) -> None:
     except asyncio.CancelledError:
         logger.info("Mock generator stopped")
         raise
+   
