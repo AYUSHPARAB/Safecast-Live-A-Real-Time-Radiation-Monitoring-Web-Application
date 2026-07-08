@@ -2,6 +2,8 @@ import json
 import math
 from datetime import datetime, timezone
 import threading
+import config
+import hashlib
 from confluent_kafka import Consumer as KafkaConsumer
 from pyflink.common import Time
 from pyflink.datastream.window import TumblingEventTimeWindows, TumblingProcessingTimeWindows
@@ -20,7 +22,10 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
 )
 from pyflink.datastream.functions import ProcessAllWindowFunction
-import config
+import reverse_geocoder as rg
+
+_GEO = rg.RGeocoder(mode=1, verbose=False)
+_location_cache = {}
 
 # Dynamic config — background thread polling radiation-config topic
 _current_threshold = config.ALERT_THRESHOLD_CPM
@@ -32,6 +37,12 @@ _current_bbox = {
     "lon_max": config.BBOX_LON_MAX,
 }
 # _config_lock = threading.Lock()
+
+LOW_MS  = int(datetime(2011, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+HIGH_MS = int(datetime(2027, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+B32 = "0123456789bcdefghjkmnpqrstuvwxyz"
+LEVEL_RANK = {"safe": 0, "warning": 1, "elevated": 2, "high": 3}
 
 def _config_watcher():
     global _current_threshold, _current_bbox_enabled, _current_bbox
@@ -63,19 +74,12 @@ _watcher_thread.start()
 # CONFIG_STATE = MapStateDescriptor(
 #     "config_state", Types.STRING(), Types.FLOAT())
 
-LOW_MS  = int(datetime(2011, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
-HIGH_MS = int(datetime(2027, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
-
-B32 = "0123456789bcdefghjkmnpqrstuvwxyz"
-LEVEL_RANK = {"safe": 0, "warning": 1, "elevated": 2, "high": 3}
-
 def _num(x):
     try:
         v = float(x)
         return None if math.isnan(v) else v
     except (TypeError, ValueError):
         return None
-
 
 def parse_time(s):
     s = str(s).strip()
@@ -84,7 +88,6 @@ def parse_time(s):
     fmt = "%Y-%m-%d %H:%M:%S.%f" if "." in s else "%Y-%m-%d %H:%M:%S"
     dt = datetime.strptime(s, fmt)
     return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
-
 
 def parse(raw: str):
     try:
@@ -103,6 +106,29 @@ def parse(raw: str):
     except (ValueError, TypeError):
         return None
 
+def make_location(lat, lon):
+    try:
+        r = _GEO.query([(lat, lon)])[0]
+        city   = (r.get("name") or "").strip()
+        cc     = (r.get("cc") or "").strip()
+        parts = [p for p in (city, cc) if p]
+        return ", ".join(parts) if parts else "%.3f,%.3f" % (lat, lon)
+    except Exception:
+        return "%.3f,%.3f" % (lat, lon)
+
+def location_for(cache_key, lat, lon):
+    if cache_key not in _location_cache:
+        _location_cache[cache_key] = make_location(lat, lon)
+    return _location_cache[cache_key]
+
+def sensor_key(e):
+    lat = e.get("latitude")
+    lon = e.get("longitude")
+    if lat is None or lon is None:
+        return "00000000"
+    ck = "%.3f_%.3f" % (lat, lon)                       
+    h  = hashlib.md5(ck.encode()).hexdigest()[:8].upper()
+    return f"{h}"
 
 def enrich(e):
     e = dict(e)
@@ -112,14 +138,12 @@ def enrich(e):
     elif cpm >= t * 2: e["level"] = "elevated"
     elif cpm >= t:     e["level"] = "warning"
     else:              e["level"] = "safe"
+    sk = sensor_key(e)
+    e["sensor_key"] = sk
+    existing = (e.get("location_name") or "").strip()
+    e["location"] = existing if existing else location_for(sk, e["latitude"], e["longitude"])
     return e
-
-def sensor_key(e):
-    lat = e.get("latitude")
-    lon = e.get("longitude")
-    if lat is None or lon is None:
-        return "unknown"
-    return "loc:%.4f_%.4f" % (lat, lon)
+                             
 
 def geohash_encode(lat, lon, precision):
     lat_r, lon_r = [-90.0, 90.0], [-180.0, 180.0]
@@ -145,6 +169,19 @@ def add_geohash(e):
     e["geohash"], e["cell_lat"], e["cell_lon"] = gh, clat, clon
     return e
 
+def cell_location(gh, lat, lon):
+    if gh not in _location_cache:
+        try:
+            r = _GEO.query([(lat, lon)])[0]
+            city = r["name"]
+            cc   = r["cc"]
+            country = COUNTRY_NAMES.get(cc, cc)
+            name = f"{city}, {country}" if city else country     # "Fukushima, Japan"
+        except Exception:
+            name = f"{lat:.3f},{lon:.3f}"                        # fallback: coords
+        _location_cache[gh] = name
+    return _location_cache[gh]
+
 class BoundingBoxFilter:
     def __call__(self, e):
         global _current_bbox_enabled, _current_bbox
@@ -155,11 +192,9 @@ class BoundingBoxFilter:
             and _current_bbox["lon_min"] <= e["longitude"] <= _current_bbox["lon_max"]
         )
 
-
 class CapturedTimestampAssigner(TimestampAssigner):
     def extract_timestamp(self, value, record_timestamp):
         return value["captured_at"]
-
 
 class LatestPerSensor(KeyedProcessFunction):
 
@@ -285,7 +320,6 @@ class SpikeDetector(KeyedProcessFunction):
             config.SPIKE_EMA_ALPHA * cpm + (1 - config.SPIKE_EMA_ALPHA) * avg)
         self.rolling_avg.update(new_avg)
 
-
 class HeatmapAggregate(AggregateFunction):
     def create_accumulator(self):
         return {"count": 0, "total": 0.0, "max_cpm": 0.0,
@@ -312,9 +346,10 @@ class AttachCellMeta(ProcessWindowFunction):
     def process(self, key, ctx, aggregations):
         acc = next(iter(aggregations))
         avg = round(acc["total"] / acc["count"], 2) if acc["count"] else 0.0
-        yield {                                    
+        yield {
             "type": "heatmap_cell",
             "geohash": key,
+            "location": location_for(key, acc["clat"], acc["clon"]),   
             "cell_lat": round(acc["clat"], 5),
             "cell_lon": round(acc["clon"], 5),
             "avg_cpm": avg,
@@ -331,6 +366,7 @@ class TopNHotspots(ProcessAllWindowFunction):
         out = [{
             "rank": i + 1,
             "geohash": c["geohash"],
+            "location": c["location"], 
             "lat": c["cell_lat"],
             "lon": c["cell_lon"],
             "max_cpm": c["max_cpm"],
