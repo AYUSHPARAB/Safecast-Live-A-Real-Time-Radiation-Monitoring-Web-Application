@@ -7,6 +7,8 @@ from aiokafka import AIOKafkaConsumer
 from .cache import cache
 from .ws_manager import manager
 from .config import settings
+from . import db
+
 from .models import (
     SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell, WSMessage,
 )
@@ -75,3 +77,4 @@ async def run_consumer() -> None:
         raise
     finally:
         await consumer.stop()
+        

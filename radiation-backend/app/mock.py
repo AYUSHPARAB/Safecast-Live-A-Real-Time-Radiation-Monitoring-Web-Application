@@ -55,6 +55,7 @@ def make_alert(point: SensorCurrentReading) -> RadiationAlert:
         longitude=point.longitude,
         device_id=point.device_id,
         location_name=point.location_name,
+        sensor_key=point.sensor_key,
         level=point.level,
     )
 
@@ -112,4 +113,3 @@ async def run_mock(interval: float = 1.0) -> None:
     except asyncio.CancelledError:
         logger.info("Mock generator stopped")
         raise
-   

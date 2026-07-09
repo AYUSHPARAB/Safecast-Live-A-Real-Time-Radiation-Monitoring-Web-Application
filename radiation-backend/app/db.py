@@ -59,7 +59,7 @@ async def insert_alert(alert) -> None:
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
         alert.captured_at_dt,
-        alert.device_id,
+        alert.sensor_key,
         alert.location_name,
         alert.latitude,
         alert.longitude,

@@ -11,6 +11,7 @@ from .routes import points, stats, alerts, history
 from .cache import cache
 from .ws_manager import manager
 from .models import WSMessage
+from . import db
 
 logger = logging.getLogger(__name__)
 
@@ -88,4 +89,3 @@ async def websocket_endpoint(ws: WebSocket):
     except Exception:
         logger.exception("WS error — dropping connection")
         manager.disconnect(ws)
-    

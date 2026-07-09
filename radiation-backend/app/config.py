@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     topic_stats: str = "radiation-stats"
     topic_heatmap: str = "radiation-heatmap"
     kafka_group: str = "backend"
+    topic_clean: str = "radiation-clean"
+    topic_config: str = "radiation-config"
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
