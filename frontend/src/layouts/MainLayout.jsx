@@ -13,6 +13,7 @@ export default function MainLayout() {
     bbox: null,
     center: [20, 10],
     zoom: 2,
+    threshold: null,
 
     timeRange: "live",
   });
