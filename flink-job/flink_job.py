@@ -22,7 +22,7 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
 )
 from pyflink.datastream.functions import ProcessAllWindowFunction
-import reverse_geocoder as rg
+import pycountry, reverse_geocoder as rg
 
 _GEO = rg.RGeocoder(mode=1, verbose=False)
 _location_cache = {}
@@ -106,13 +106,21 @@ def parse(raw: str):
     except (ValueError, TypeError):
         return None
 
+def _country_name(cc):
+    try:
+        return pycountry.countries.get(alpha_2=cc).name   
+    except Exception:
+        return cc  
+    
+
 def make_location(lat, lon):
     try:
         r = _GEO.query([(lat, lon)])[0]
-        city   = (r.get("name") or "").strip()
-        cc     = (r.get("cc") or "").strip()
-        parts = [p for p in (city, cc) if p]
-        return ", ".join(parts) if parts else "%.3f,%.3f" % (lat, lon)
+        city = (r.get("name") or "").strip()
+        cc   = (r.get("cc") or "").strip()
+        country = _country_name(cc) if cc else ""
+        parts = [p for p in (city, country) if p]
+        return ", ".join(parts) if parts else "%.3f,%.3f" % (lat, lon)   
     except Exception:
         return "%.3f,%.3f" % (lat, lon)
 
@@ -120,6 +128,7 @@ def location_for(cache_key, lat, lon):
     if cache_key not in _location_cache:
         _location_cache[cache_key] = make_location(lat, lon)
     return _location_cache[cache_key]
+
 
 def sensor_key(e):
     lat = e.get("latitude")
