@@ -107,6 +107,21 @@
   margin-bottom: 14px;
 }
 
+.legend-text {
+  display: grid;
+  gap: 2px;
+}
+
+.legend-text strong {
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.legend-text small {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
 .legend-color {
   width: 16px;
   height: 16px;
@@ -274,8 +289,7 @@ main {
 }
 
 .live-alerts-card {
-  max-height: 320px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .live-alerts-card .alert-row {
@@ -547,6 +561,15 @@ main {
   margin-top: 4px;
   color: #9ca3af;
   font-size: 12px;
+}
+
+.top-locations-placeholder {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #263244;
+  color: #9ca3af;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* =========================

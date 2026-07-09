@@ -1,21 +1,9 @@
-import { COLOR_SCALE } from "../utils/colors";
+import { ALERT_LEVELS } from "../utils/colors";
 import { AREAS } from "../utils/areas";
 import NavMenu from "./NavMenu";
 import ThresholdControl from "./ThresholdControl";
 
 export default function Sidebar({ filters, onFilterChange }) {
-  function handleMin(e) {
-    onFilterChange({ ...filters, minCpm: Number(e.target.value) });
-  }
-
-  function handleMax(e) {
-    const v = e.target.value;
-    onFilterChange({
-      ...filters,
-      maxCpm: v === "500+" ? null : Number(v),
-    });
-  }
-
   function handleArea(e) {
     const selected = AREAS.find((area) => area.id === e.target.value);
 
@@ -45,16 +33,19 @@ export default function Sidebar({ filters, onFilterChange }) {
 
       {/* Colour scale legend */}
       <div className="sidebar-card">
-        <h3>Color Scale (CPM)</h3>
+        <h3>Alert Levels</h3>
 
-        {COLOR_SCALE.map((item) => (
-          <div className="legend-item" key={item.label}>
+        {ALERT_LEVELS.map((item) => (
+          <div className="legend-item" key={item.id}>
             <span
               className="legend-color"
               style={{ background: item.color }}
             ></span>
 
-            <span>{item.label}</span>
+            <span className="legend-text">
+              <strong>{item.label}</strong>
+              <small>{item.threshold}</small>
+            </span>
           </div>
         ))}
       </div>
@@ -62,27 +53,6 @@ export default function Sidebar({ filters, onFilterChange }) {
       {/* Data filters */}
       <div className="sidebar-card">
         <h3>Data Filters</h3>
-
-        <label>Min CPM</label>
-
-        <select value={filters.minCpm} onChange={handleMin}>
-          <option value="0">0</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-          <option value="200">200</option>
-        </select>
-
-        <label>Max CPM</label>
-
-        <select
-          value={filters.maxCpm === null ? "500+" : String(filters.maxCpm)}
-          onChange={handleMax}
-        >
-          <option value="500+">500+</option>
-          <option value="300">300</option>
-          <option value="200">200</option>
-          <option value="100">100</option>
-        </select>
 
         <label>Area</label>
 

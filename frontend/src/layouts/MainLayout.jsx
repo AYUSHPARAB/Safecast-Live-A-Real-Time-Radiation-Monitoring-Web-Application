@@ -7,8 +7,6 @@ import Footer from "../components/Footer";
 
 export default function MainLayout() {
   const [filters, setFilters] = useState({
-    minCpm: 0,
-    maxCpm: null,
     area: "world",
     bbox: null,
     center: [20, 10],

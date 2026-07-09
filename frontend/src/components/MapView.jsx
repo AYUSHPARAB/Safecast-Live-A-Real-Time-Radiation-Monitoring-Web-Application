@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -9,7 +9,7 @@ import { useMap } from "react-leaflet";
 
 import { getSensors } from "../services/api";
 import { subscribeLiveUpdates } from "../services/websocket";
-import { cpmToColor } from "../utils/colors";
+import { levelToColor } from "../utils/colors";
 import SensorPopup from "./SensorPopup";
 import HeatmapLayer from "./HeatmapLayer";
 
@@ -45,16 +45,11 @@ function ChangeMapView({ center, zoom }) {
 }
 
 
-export default function MapView({ filters, onDangerSensorsChange }) {
+export default function MapView({ filters }) {
   const [sensors, setSensors] = useState([]);
   const [heatmapCells, setHeatmapCells] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const thresholdValue = Number(filters?.threshold);
-  const hasThreshold =
-    filters?.threshold !== null &&
-    filters?.threshold !== "" &&
-    Number.isFinite(thresholdValue);
 
   useEffect(() => {
     let active = true;
@@ -81,7 +76,7 @@ export default function MapView({ filters, onDangerSensorsChange }) {
     return () => {
       active = false;
     };
-  }, [filters?.bbox, filters?.minCpm]);
+  }, [filters?.bbox]);
 
   useEffect(() => {
     const unsubscribeMap = subscribeLiveUpdates("map", (data) => {
@@ -113,25 +108,7 @@ export default function MapView({ filters, onDangerSensorsChange }) {
     };
   }, []);
 
-  const visibleSensors = useMemo(() => {
-    return sensors.filter((sensor) => {
-      if (!filters) return true;
-
-      if (filters.minCpm != null && sensor.cpm < filters.minCpm) return false;
-      if (filters.maxCpm != null && sensor.cpm > filters.maxCpm) return false;
-      if (hasThreshold && Number(sensor.cpm) < thresholdValue) return false;
-
-      return true;
-    });
-  }, [filters, hasThreshold, sensors, thresholdValue]);
-
-  const dangerSensors = useMemo(() => {
-    return hasThreshold ? visibleSensors : [];
-  }, [hasThreshold, visibleSensors]);
-
-  useEffect(() => {
-    onDangerSensorsChange?.(dangerSensors);
-  }, [dangerSensors, onDangerSensorsChange]);
+  const visibleSensors = sensors;
 
   return (
     <MapContainer
@@ -212,12 +189,12 @@ export default function MapView({ filters, onDangerSensorsChange }) {
         <CircleMarker
           key={sensor.sensor_key || sensor.device_id}
           center={[sensor.latitude, sensor.longitude]}
-          radius={hasThreshold ? 6 : 4}
+          radius={4}
           pathOptions={{
-            color: hasThreshold ? "#ef4444" : cpmToColor(sensor.cpm),
-            fillColor: hasThreshold ? "#ef4444" : cpmToColor(sensor.cpm),
-            fillOpacity: hasThreshold ? 0.95 : 0.85,
-            weight: hasThreshold ? 2 : 1,
+            color: levelToColor(sensor.level, sensor.cpm),
+            fillColor: levelToColor(sensor.level, sensor.cpm),
+            fillOpacity: 0.85,
+            weight: 1,
           }}
         >
           <Popup>

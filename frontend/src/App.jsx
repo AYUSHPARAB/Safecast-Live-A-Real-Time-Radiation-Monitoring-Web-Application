@@ -4,7 +4,6 @@ import LiveMapPage from "./pages/LiveMapPage";
 import TimeExplorerPage from "./pages/TimeExplorerPage";
 import DataGraphsPage from "./pages/DataGraphsPage";
 import AlertsPage from "./pages/AlertsPage";
-import SensorsPage from "./pages/SensorsPage";
 import AboutPage from "./pages/AboutPage";
 import "./styles/App.css";
 
@@ -19,7 +18,6 @@ function App() {
           <Route path="time-explorer" element={<TimeExplorerPage />} />
           <Route path="data-graphs" element={<DataGraphsPage />} />
           <Route path="alerts" element={<AlertsPage />} />
-          <Route path="sensors" element={<SensorsPage />} />
           <Route path="about" element={<AboutPage />} />
           {/* unknown routes -> live map */}
           <Route path="*" element={<Navigate to="/" replace />} />

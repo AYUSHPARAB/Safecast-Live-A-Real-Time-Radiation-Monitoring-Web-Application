@@ -25,7 +25,6 @@ export async function getSensors(filters = {}) {
   if (USE_MOCK) return getMockSensors();
   const res = await fetch(
     apiUrl(`/api/points${buildQuery({
-      min_cpm: filters.minCpm,
       bbox: filters.bbox,
     })}`)
   );

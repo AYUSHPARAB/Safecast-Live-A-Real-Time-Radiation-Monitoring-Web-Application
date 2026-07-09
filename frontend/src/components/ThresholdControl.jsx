@@ -15,11 +15,11 @@ export default function ThresholdControl({
       return;
     }
 
-    onThresholdChange?.(nextThreshold);
     setStatus("saving");
 
     try {
       await setThreshold(nextThreshold);
+      onThresholdChange?.(nextThreshold);
       setStatus("ok");
     } catch (err) {
       console.error("threshold update failed:", err);
@@ -30,14 +30,13 @@ export default function ThresholdControl({
   function handleClear() {
     setValue("");
     setStatus(null);
-    onThresholdChange?.(null);
   }
  
   return (
     <div className="sidebar-card">
       <h3>Alert Threshold (CPM)</h3>
  
-      <label>Critical level</label>
+      <label>Base alert threshold</label>
       <input
         className="threshold-input"
         type="number"

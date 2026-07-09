@@ -6,7 +6,6 @@ const NAV_ITEMS = [
   { to: "/time-explorer", label: "Time Explorer", icon: "◷" },
   { to: "/data-graphs", label: "Data & Graphs", icon: "▦" },
   { to: "/alerts", label: "Alerts", icon: "⚠" },
-  { to: "/sensors", label: "Sensors", icon: "◈" },
   { to: "/about", label: "About", icon: "ⓘ" },
 ];
 

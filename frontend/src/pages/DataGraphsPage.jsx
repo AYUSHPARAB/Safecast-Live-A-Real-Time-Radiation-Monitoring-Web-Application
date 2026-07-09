@@ -1,33 +1,42 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Cell,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { getSensors, getStats } from "../services/api";
-import { cpmToColor, COLOR_SCALE } from "../utils/colors";
+import { getStats } from "../services/api";
 
 export default function DataGraphsPage() {
-  const [sensors, setSensors] = useState([]);
+  const [stats, setStats] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const timelineRef = useRef([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     async function tick() {
       try {
-        const [s, st] = await Promise.all([getSensors(), getStats()]);
+        const st = await getStats();
         if (!active) return;
-        setSensors(s);
+        setStats(st);
+
+        if (!st?.avg_cpm && st?.avg_cpm !== 0) return;
 
         const point = {
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-          avg: st.avg_cpm,
+          avg: Number(st.avg_cpm),
         };
         timelineRef.current = [...timelineRef.current, point].slice(-30);
         setTimeline(timelineRef.current);
+        setError("");
       } catch (e) {
         console.error("charts fetch failed:", e);
+        if (active) setError("Unable to load live statistics.");
       }
     }
 
@@ -36,57 +45,36 @@ export default function DataGraphsPage() {
     return () => { active = false; clearInterval(id); };
   }, []);
 
-  //Chart 1: distribution across the colour bands
-  const distribution = COLOR_SCALE.map((band) => {
-    const nums = band.label.match(/\d+/g)?.map(Number) || [];
-    const lo = nums[0] ?? 0;
-    const hi = nums.length > 1 ? nums[1] : Infinity;
-    const count = sensors.filter((s) => s.cpm >= lo && s.cpm < hi).length;
-    return { label: band.label, count, color: band.color };
-  });
-
-  //Chart 2: top 10 hottest sensors
-  const topSensors = [...sensors]
-    .sort((a, b) => b.cpm - a.cpm)
-    .slice(0, 10)
-    .map((s) => ({
-      name: s.display_name || s.device_id,
-      cpm: s.cpm,
-      color: cpmToColor(s.cpm),
-    }));
-
   return (
     <div className="page-placeholder">
       <h2>Data &amp; Graphs</h2>
 
-      <div className="chart-block">
-        <h3>CPM Distribution (sensors per level)</h3>
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={distribution}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#232b3d" />
-            <XAxis dataKey="label" stroke="#9aa4b8" fontSize={12} />
-            <YAxis stroke="#9aa4b8" fontSize={12} allowDecimals={false} />
-            <Tooltip contentStyle={{ background: "#111827", border: "1px solid #232b3d", color: "#e5e7eb" }} />
-            <Bar dataKey="count">
-              {distribution.map((d, i) => <Cell key={i} fill={d.color} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {error && <p style={{ color: "#ef4444" }}>{error}</p>}
 
       <div className="chart-block">
-        <h3>Top 10 Hottest Sensors (current)</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={topSensors} layout="vertical" margin={{ left: 40 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#232b3d" />
-            <XAxis type="number" stroke="#9aa4b8" fontSize={12} />
-            <YAxis type="category" dataKey="name" stroke="#9aa4b8" fontSize={11} width={120} />
-            <Tooltip contentStyle={{ background: "#111827", border: "1px solid #232b3d", color: "#e5e7eb" }} />
-            <Bar dataKey="cpm">
-              {topSensors.map((d, i) => <Cell key={i} fill={d.color} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <h3>Current Global Statistics</h3>
+        {stats ? (
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-value">{Number(stats.avg_cpm ?? 0).toFixed(1)}</div>
+              <div className="stat-label">Average CPM</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{Number(stats.max_cpm ?? 0).toFixed(1)}</div>
+              <div className="stat-label">Maximum CPM</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{Number(stats.active_sensors ?? 0).toLocaleString()}</div>
+              <div className="stat-label">Active Sensors</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{Number(stats.alert_count ?? 0).toLocaleString()}</div>
+              <div className="stat-label">Alerts</div>
+            </div>
+          </div>
+        ) : (
+          <p className="muted">No live statistics available yet.</p>
+        )}
       </div>
 
       <div className="chart-block">

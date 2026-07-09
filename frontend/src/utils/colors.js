@@ -1,4 +1,39 @@
-// Converts CPM value into marker color.
+export const ALERT_LEVELS = [
+  {
+    id: "safe",
+    label: "Safe",
+    threshold: "Below alert threshold",
+    color: "#22c55e",
+  },
+  {
+    id: "warning",
+    label: "Warning",
+    threshold: "At least 1x threshold",
+    color: "#eab308",
+  },
+  {
+    id: "elevated",
+    label: "Elevated",
+    threshold: "At least 2x threshold",
+    color: "#f97316",
+  },
+  {
+    id: "high",
+    label: "High",
+    threshold: "At least 3x threshold",
+    color: "#ef4444",
+  },
+];
+
+const LEVEL_COLORS = Object.fromEntries(
+  ALERT_LEVELS.map((level) => [level.id, level.color])
+);
+
+export function levelToColor(level, fallbackCpm = 0) {
+  return LEVEL_COLORS[level] || cpmToColor(fallbackCpm);
+}
+
+// Converts CPM value into marker color when a backend level is unavailable.
 
 export function cpmToColor(cpm) {
   if (cpm < 50) return "#22c55e";   // Green
@@ -11,32 +46,10 @@ export function cpmToColor(cpm) {
 // Converts CPM value into readable severity text.
 
 export function cpmToSeverity(cpm) {
-  if (cpm < 100) return "Normal";
+  if (cpm < 100) return "Safe";
   if (cpm < 300) return "Elevated";
   return "High";
 }
 
 // Used for sidebar legend.
-
-export const COLOR_SCALE = [
-  {
-    label: "0 – 50",
-    color: "#22c55e",
-  },
-  {
-    label: "50 – 100",
-    color: "#84cc16",
-  },
-  {
-    label: "100 – 200",
-    color: "#eab308",
-  },
-  {
-    label: "200 – 300",
-    color: "#f97316",
-  },
-  {
-    label: "300+",
-    color: "#ef4444",
-  },
-];
+export const COLOR_SCALE = ALERT_LEVELS;

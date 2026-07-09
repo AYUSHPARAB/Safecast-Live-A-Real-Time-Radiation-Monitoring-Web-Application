@@ -1,27 +1,18 @@
 import { useEffect, useState } from "react";
 import { getAlerts } from "../services/api";
 import { subscribeLiveUpdates } from "../services/websocket";
-import { cpmToColor } from "../utils/colors";
+import { levelToColor } from "../utils/colors";
 
-const MAX_ALERTS = 100;
+const MAX_ALERTS = 5;
 
 function alertKey(alert) {
   return `${alert.sensor_key || alert.device_id}-${alert.captured_at}-${alert.cpm}`;
 }
 
-export default function AlertPanel({
-  className = "",
-  dangerSensors = [],
-  threshold = null,
-}) {
-  const [alerts, setAlerts] =useState([]);
+export default function AlertPanel({ className = "" }) {
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const thresholdValue = Number(threshold);
-  const hasThreshold =
-    threshold !== null &&
-    threshold !== "" &&
-    Number.isFinite(thresholdValue);
 
   useEffect(() => {
     let active = true;
@@ -30,7 +21,7 @@ export default function AlertPanel({
       try {
         setLoading(true);
 
-        const data = await getAlerts();
+        const data = await getAlerts(MAX_ALERTS);
         if (!active) return;
 
         setAlerts(Array.isArray(data) ? data.slice(0, MAX_ALERTS) : []);
@@ -69,62 +60,6 @@ export default function AlertPanel({
       unsubscribeAlerts();
     };
   }, []);
-
-  if (hasThreshold) {
-    return (
-      <div className={`alerts-panel ${className}`.trim()}>
-        <h3>Threshold Alerts</h3>
-
-        {dangerSensors.length === 0 ? (
-          <p>No sensors exceed {thresholdValue} CPM.</p>
-        ) : (
-          dangerSensors.map((sensor) => (
-            <div
-              className="alert-row"
-              key={`${sensor.sensor_key || sensor.device_id}-${sensor.captured_at}`}
-            >
-              <div className="alert-icon">
-                ⚠️
-              </div>
-
-              <div className="alert-message">
-                <strong>
-                  {sensor.display_name || sensor.location_name || sensor.device_id}
-                </strong>
-
-                <div>
-                  CPM exceeds configured threshold
-                </div>
-
-                <small
-                  style={{
-                    color: cpmToColor(sensor.cpm),
-                    fontWeight: "bold",
-                  }}
-                >
-                  {sensor.cpm} CPM / threshold {thresholdValue} CPM
-                </small>
-
-                <div className="threshold-location">
-                  {sensor.location_name || sensor.device_id}
-                </div>
-              </div>
-
-              <div
-                className="alert-time"
-                style={{
-                  fontSize: "12px",
-                  color: "#666",
-                }}
-              >
-                {sensor.captured_at_dt || sensor.uploaded_at || ""}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    );
-  }
 
   if (loading) {
     return (
@@ -174,10 +109,7 @@ export default function AlertPanel({
             </div>
 
             <small
-              style={{
-                color: cpmToColor(alert.cpm),
-                fontWeight: "bold",
-              }}
+              style={{ color: levelToColor(alert.level, alert.cpm) }}
             >
               {alert.cpm} CPM ({alert.level})
             </small>
@@ -194,6 +126,9 @@ export default function AlertPanel({
           </div>
         </div>
       ))}
+      <div className="top-locations-placeholder">
+        Top dangerous locations require backend exposure of radiation-top.
+      </div>
     </div>
   );
 }
