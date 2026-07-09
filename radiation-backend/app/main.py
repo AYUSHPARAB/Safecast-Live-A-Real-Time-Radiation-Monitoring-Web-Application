@@ -25,6 +25,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Could not reach Redis at %s", settings.redis_url)
 
+    try:
+        await db.connect()
+    except Exception:
+        logger.exception("Could not reach the database at %s", settings.database_url)
+
     task = None
     if settings.mock_mode:
         task = asyncio.create_task(run_mock())
@@ -40,6 +45,7 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
+    await db.close_db()
     await cache.close()
 
 

@@ -82,6 +82,7 @@ async def run_mock(interval: float = 1.0) -> None:
                 try:
                     point = make_reading()
                     await cache.put_point(point)
+                    await db.insert_reading(point)
                     await manager.broadcast(
                         WSMessage(channel="current",
                                   data=point.model_dump(mode="json")).model_dump()
@@ -89,6 +90,7 @@ async def run_mock(interval: float = 1.0) -> None:
                     if point.cpm > 300:
                         alert = make_alert(point)
                         await cache.put_alert(alert)
+                        await db.insert_alert(alert)
                         await manager.broadcast(
                             WSMessage(channel="alerts",
                                       data=alert.model_dump(mode="json")).model_dump()

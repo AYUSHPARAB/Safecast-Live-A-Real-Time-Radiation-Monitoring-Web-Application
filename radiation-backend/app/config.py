@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:password@localhost:5432/radiation"
 
     redis_url: str = "redis://redis:6379/0"
-    sensor_ttl_seconds: int = 3600   # stale markers / heat cells drop off after this
+    sensor_ttl_seconds: int = 3600   # stale markers
 
     kafka_bootstrap: str = "kafka:9092"
     topic_current: str = "radiation-current"

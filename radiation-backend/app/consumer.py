@@ -8,7 +8,6 @@ from .cache import cache
 from .ws_manager import manager
 from .config import settings
 from . import db
-
 from .models import (
     SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell, WSMessage,
 )
@@ -18,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def run_consumer() -> None:
     consumer = AIOKafkaConsumer(
+        settings.topic_clean,
         settings.topic_current,
         settings.topic_alerts,
         settings.topic_stats,
@@ -42,7 +42,11 @@ async def run_consumer() -> None:
     try:
         async for msg in consumer:
             try:
-                if msg.topic == settings.topic_current:
+                if msg.topic == settings.topic_clean:
+                    reading = SensorCurrentReading(**msg.value)
+                    await db.insert_reading(reading)
+                
+                elif msg.topic == settings.topic_current:
                     point = SensorCurrentReading(**msg.value)
                     await cache.put_point(point)
                     await manager.broadcast(
@@ -52,6 +56,7 @@ async def run_consumer() -> None:
                 elif msg.topic == settings.topic_alerts:
                     alert = RadiationAlert(**msg.value)
                     await cache.put_alert(alert)
+                    await db.insert_alert(alert)
                     await manager.broadcast(
                         WSMessage(channel="alerts",
                                   data=alert.model_dump(mode="json")).model_dump()
