@@ -28,6 +28,13 @@ export default function Sidebar({ filters, onFilterChange }) {
     });
   }
 
+  function handleThresholdChange(threshold) {
+    onFilterChange({
+      ...filters,
+      threshold,
+    });
+  }
+
   return (
     <aside className="sidebar">
 
@@ -91,7 +98,10 @@ export default function Sidebar({ filters, onFilterChange }) {
         </select>
       </div>
 
-      <ThresholdControl />
+      <ThresholdControl
+        threshold={filters.threshold}
+        onThresholdChange={handleThresholdChange}
+      />
 
     </aside>
   );

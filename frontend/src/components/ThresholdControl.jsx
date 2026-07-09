@@ -1,19 +1,36 @@
 import { useState } from "react";
 import { setThreshold } from "../services/api";
 
-export default function ThresholdControl() {
-  const [value, setValue] = useState(300);
+export default function ThresholdControl({
+  threshold = null,
+  onThresholdChange,
+}) {
+  const [value, setValue] = useState(threshold ?? 300);
   const [status, setStatus] = useState(null); // "saving" | "ok" | "error"
  
   async function handleSet() {
+    const nextThreshold = Number(value);
+    if (!Number.isFinite(nextThreshold) || nextThreshold < 0) {
+      setStatus("error");
+      return;
+    }
+
+    onThresholdChange?.(nextThreshold);
     setStatus("saving");
+
     try {
-      await setThreshold(Number(value));
+      await setThreshold(nextThreshold);
       setStatus("ok");
     } catch (err) {
       console.error("threshold update failed:", err);
       setStatus("error");
     }
+  }
+
+  function handleClear() {
+    setValue("");
+    setStatus(null);
+    onThresholdChange?.(null);
   }
  
   return (
@@ -31,6 +48,13 @@ export default function ThresholdControl() {
  
       <button className="threshold-btn" onClick={handleSet}>
         Set Threshold
+      </button>
+
+      <button
+        className="threshold-btn secondary"
+        onClick={handleClear}
+      >
+        Clear Threshold
       </button>
  
       {status === "saving" && <p className="threshold-msg muted">Saving…</p>}

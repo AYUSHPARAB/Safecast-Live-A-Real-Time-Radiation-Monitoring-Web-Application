@@ -3,43 +3,22 @@ import { useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet.heat";
 
-import { clusterSensors } from "../utils/heatmapCluster";
-
-export default function HeatmapLayer({ sensors = [] }) {
+export default function HeatmapLayer({ cells = [] }) {
   const map = useMap();
-
-  const zoom = map.getZoom();
 
   useEffect(() => {
     if (!map) return;
 
-    //--------------------------------------------------
-    // Create weighted clusters
-    //--------------------------------------------------
+    // Presentation only: Flink/backend should emit heatmap-ready cells.
+    const heatPoints = cells
+      .filter((cell) => cell.cell_lat != null && cell.cell_lon != null)
+      .map((cell) => [
+        cell.cell_lat,
+        cell.cell_lon,
+        Math.min(Number(cell.avg_cpm || cell.max_cpm || 0) / 500, 1),
+      ]);
 
-  const clusters = clusterSensors(
-    sensors,
-    {
-      zoom,
-      maxExpectedCPM:500,
-      cpmWeight:0.7,
-      densityWeight:0.3,
-    }
-    );
-
-    //--------------------------------------------------
-    // Convert to Leaflet heat format
-    //--------------------------------------------------
-
-    const heatPoints = clusters.map((cluster) => [
-      cluster.lat,
-      cluster.lon,
-      cluster.weight,
-    ]);
-
-    //--------------------------------------------------
-    // Create heat layer
-    //--------------------------------------------------
+    if (heatPoints.length === 0) return;
 
     const heatLayer = L.heatLayer(heatPoints, {
       radius: 28,
@@ -61,7 +40,7 @@ export default function HeatmapLayer({ sensors = [] }) {
       map.removeLayer(heatLayer);
     };
 
-  }, [map, sensors]);
+  }, [map, cells]);
 
   return null;
 }
