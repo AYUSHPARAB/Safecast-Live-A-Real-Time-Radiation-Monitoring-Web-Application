@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .mock import run_mock
-from .routes import points, stats, alerts, history, config as config_routes, spikes, top
+from .routes import points, stats, alerts, history, config as config_routes, spikes, top, ingestion_speed
 from .cache import cache
 from .ws_manager import manager
 from .models import WSMessage
@@ -65,7 +65,7 @@ app.include_router(alerts.router)
 app.include_router(history.router)
 app.include_router(spikes.router)
 app.include_router(top.router)
-app.include_router(config_routes.router)
+app.include_router(ingestion_speed.router)
 
 
 @app.get("/api/health")
