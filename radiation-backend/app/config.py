@@ -22,9 +22,8 @@ class Settings(BaseSettings):
     topic_stats: str = "radiation-stats"
     topic_heatmap: str = "radiation-heatmap"
     topic_spikes: str = "radiation-spikes"
-    topic_config: str = "radiotion-config"
+    topic_top: str = "radiation-top"
 
-    default_threshold: float = 50.0
     
     cors_origins: list[str] = ["http://localhost:5173"]
 

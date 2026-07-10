@@ -9,7 +9,7 @@ from .ws_manager import manager
 from .config import settings
 from . import db
 from .models import (
-    SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell, WSMessage,
+    SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell, WSMessage, RadiationSpike, TopHotspots,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,8 @@ async def run_consumer() -> None:
         settings.topic_alerts,
         settings.topic_stats,
         settings.topic_heatmap,
+        settings.topic_spikes,
+        settings.topic_top,
         bootstrap_servers=settings.kafka_bootstrap,
         group_id=settings.kafka_group,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -74,6 +76,20 @@ async def run_consumer() -> None:
                     await manager.broadcast(
                         WSMessage(channel="heatmap",
                                   data=cell.model_dump(mode="json")).model_dump()
+                    )
+                elif msg.topic == settings.topic_spikes:
+                    spike = RadiationSpike(**msg.value)
+                    await cache.put_spike(spike)
+                    await manager.broadcast(
+                        WSMessage(channel="spikes",
+                                  data=spike.model_dump(mode="json")).model_dump()
+                    )
+                elif msg.topic == settings.topic_top:
+                    top = TopHotspots(**msg.value)
+                    await cache.put_top(top)
+                    await manager.broadcast(
+                        WSMessage(channel="top",
+                                  data=top.model_dump(mode="json")).model_dump()
                     )
             except Exception:
                 logger.exception("Bad Kafka message on %s — skipping", msg.topic)
