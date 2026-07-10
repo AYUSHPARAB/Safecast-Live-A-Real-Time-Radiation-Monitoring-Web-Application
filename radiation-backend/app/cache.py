@@ -1,3 +1,4 @@
+# app/cache.py
 import json
 from typing import Optional
 
@@ -46,6 +47,16 @@ class Cache:
             ex=settings.sensor_ttl_seconds,
         )
 
+    async def put_spike(self, spike: RadiationSpike) -> None:
+        await self.r.lpush(SPIKES_KEY, json.dumps(spike.model_dump(mode="json")))
+        await self.r.ltrim(SPIKES_KEY, 0, settings.max_alerts - 1)
+
+    async def put_top(self, top: TopHotspots) -> None:
+        await self.r.set(TOP_KEY, json.dumps(top.model_dump(mode="json")))
+
+    async def put_threshold(self, threshold: float) -> None:
+        await self.r.set(CONFIG_KEY, threshold)
+
     async def get_all_sensors(self) -> list[dict]:
         keys = [k async for k in self.r.scan_iter(match=SENSOR_PREFIX + "*")]
         if not keys:
@@ -58,7 +69,7 @@ class Cache:
         return json.loads(v) if v is not None else None
 
     async def get_alerts(self, limit: int = 20) -> list[dict]:
-        values = await self.r.lrange(ALERTS_KEY, 0, limit - 1)   
+        values = await self.r.lrange(ALERTS_KEY, 0, limit - 1)
         return [json.loads(v) for v in values]
 
     async def get_stats(self) -> Optional[dict]:
@@ -72,17 +83,23 @@ class Cache:
         values = await self.r.mget(keys)
         return [json.loads(v) for v in values if v is not None]
 
+    async def get_spikes(self, limit: int = 50) -> list[dict]:
+        values = await self.r.lrange(SPIKES_KEY, 0, limit - 1)
+        return [json.loads(v) for v in values]
+
+    async def get_top(self) -> Optional[dict]:
+        v = await self.r.get(TOP_KEY)
+        return json.loads(v) if v is not None else None
+
+    async def get_threshold(self) -> float | None:
+        v = await self.r.get(CONFIG_KEY)
+        return float(v) if v is not None else None
+
     async def sensor_count(self) -> int:
         count = 0
         async for _ in self.r.scan_iter(match=SENSOR_PREFIX + "*"):
             count += 1
         return count
-    async def put_threshold(self, threshold: float) -> None:
-        await self.r.set(CONFIG_KEY, threshold)
-    async def get_threshold(self) -> float | None:
-        v = await self.r.get(CONFIG_KEY)
-        return float(v) if v is not None else None
-    async def put_spike(self, spike: RadiationSpike) -> None:
-        await self.r.
+
 
 cache = Cache()

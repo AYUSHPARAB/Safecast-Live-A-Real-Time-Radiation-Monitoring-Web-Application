@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, computed_field, ValidationError
 
 from .config import settings
 
-logger = logging.getlogger(__name__)
+logger = logging.getLogger(__name__)
 
 Level = Literal["safe", "warning", "elevated", "high"]
 
