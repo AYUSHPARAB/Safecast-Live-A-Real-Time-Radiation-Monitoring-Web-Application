@@ -98,6 +98,8 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
+        taskmanager.memory.process.size: 4096m
+        taskmanager.memory.task.off-heap.size: 512m
         taskmanager.numberOfTaskSlots: 8
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"

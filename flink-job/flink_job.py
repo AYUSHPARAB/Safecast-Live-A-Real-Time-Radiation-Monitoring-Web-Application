@@ -85,7 +85,8 @@ def parse(raw: str):
             "uploaded_at": d.get("uploaded_time"),
             "latitude":    _num(d.get("latitude")),
             "longitude":   _num(d.get("longitude")),
-            "cpm":         _num(d.get("value")),                     
+            "cpm":         _num(d.get("value")), 
+            "unit":        str(d.get("unit", "")).strip().lower(),                       
         }
     except (ValueError, TypeError):
         return None
@@ -120,6 +121,7 @@ def sensor_key(e):
 
 def enrich(e):
     e   = dict(e)
+    e.pop("unit", None) 
     cpm = e["cpm"]
 
     # Read threshold from Redis — falls back to default if unavailable
