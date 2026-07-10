@@ -159,6 +159,7 @@ services:
       BACKEND_REDIS_URL: "redis://redis:6379/0"
       BACKEND_MAX_ALERTS: "200"
       BACKEND_CORS_ORIGINS: '["http://localhost:5173"]'
+      BACKEND_DATABASE_URL: "postgresql://postgres:password@timescaledb:5432/radiation"
     depends_on:
       kafka:
         condition: service_healthy
@@ -166,6 +167,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_started
+      timescaledb:
+        condition: service_healthy
     restart: unless-stopped
   frontend:
     build: ./frontend
@@ -175,3 +178,22 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: timescaledb
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: radiation
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./radiation-backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d radiation"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  timescale_data:  
