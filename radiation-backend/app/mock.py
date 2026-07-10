@@ -13,9 +13,9 @@ from .models import SensorCurrentReading, RadiationAlert, GlobalStats, WSMessage
 logger = logging.getLogger(__name__)
 
 CITIES = [
-    ("Tokyo",     35.6762, 139.6503),
-    ("Hamburg",   53.5511,   9.9937),
-    ("Fukushima", 37.7608, 140.4747),
+    ("Tokyo",     "Japan",   35.6762, 139.6503),
+    ("Hamburg",   "Germany", 53.5511,   9.9937),
+    ("Fukushima", "Japan",   37.7608, 140.4747),
 ]
 
 
@@ -30,19 +30,19 @@ def cpm_to_level(cpm: float) -> str:
 
 
 def make_reading() -> SensorCurrentReading:
-    city, base_lat, base_lon = random.choice(CITIES)
+    city, country, base_lat, base_lon = random.choice(CITIES)
     lat = round(base_lat + random.uniform(-0.05, 0.05), 5)
     lon = round(base_lon + random.uniform(-0.05, 0.05), 5)
     cpm = round(random.uniform(20, 400), 1)
-    device_id = f"{city[:3].upper()}-{random.randint(1, 9999):04d}"
+    sensor_key = f"{random.randint(0, 0xFFFFFFFF):08X}"   # hex like real sensor_key
     return SensorCurrentReading(
         captured_at=int(time.time() * 1000),
         cpm=cpm,
         latitude=lat,
         longitude=lon,
-        device_id=device_id,
-        location_name=city,
-        sensor_key=f"dev:{device_id}",
+        sensor_key=sensor_key,
+        city=city,
+        country=country,
         level=cpm_to_level(cpm),
     )
 
@@ -53,9 +53,9 @@ def make_alert(point: SensorCurrentReading) -> RadiationAlert:
         cpm=point.cpm,
         latitude=point.latitude,
         longitude=point.longitude,
-        device_id=point.device_id,
-        location_name=point.location_name,
         sensor_key=point.sensor_key,
+        city=point.city,
+        country=point.country,
         level=point.level,
     )
 
@@ -111,7 +111,8 @@ async def run_mock(interval: float = 1.0) -> None:
 
             tick += 1
             await asyncio.sleep(interval)
-            
+
     except asyncio.CancelledError:
         logger.info("Mock generator stopped")
         raise
+    

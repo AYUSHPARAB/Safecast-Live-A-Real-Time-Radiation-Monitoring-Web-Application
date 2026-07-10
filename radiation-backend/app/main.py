@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .mock import run_mock
-from .routes import points, stats, alerts, history
+from .routes import points, stats, alerts, history, config as config_routes, spikes, top
 from .cache import cache
 from .ws_manager import manager
 from .models import WSMessage
@@ -63,6 +63,8 @@ app.include_router(points.router)
 app.include_router(stats.router)
 app.include_router(alerts.router)
 app.include_router(history.router)
+app.include_router(spikes.router)
+app.include_router(top.router)
 
 
 @app.get("/api/health")
@@ -87,6 +89,11 @@ async def websocket_endpoint(ws: WebSocket):
         latest = await cache.get_stats()
         if latest:
             await ws.send_json(WSMessage(channel="stats", data=latest).model_dump())
+
+        top_now = await cache.get_top()
+        if top_now:
+            await ws.send_json(WSMessage(channel="top", data=top_now).model_dump())
+
 
         while True:
             await ws.receive_text()

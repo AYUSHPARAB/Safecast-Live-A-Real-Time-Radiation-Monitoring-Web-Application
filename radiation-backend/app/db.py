@@ -26,41 +26,40 @@ async def close_db() -> None:
         logger.info("Database disconnected")
 
 
-async def insert_reading(point) -> None:
+async def insert_reading(reading) -> None:
     """Save one reading permanently to the readings table."""
-    #print(f"DEBUG insert_reading called, pool={pool}", flush=True)          #debug DB
     if not pool:
         return
     await pool.execute(
         """
-        INSERT INTO readings (captured_at, sensor_key, device_id,
-                              location_name, latitude, longitude, cpm, level)
+        INSERT INTO readings (captured_at, sensor_key, city, country,
+                              latitude, longitude, cpm, level)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
-        point.captured_at_dt,
-        point.sensor_key,
-        point.device_id,
-        point.location_name,
-        point.latitude,
-        point.longitude,
-        point.cpm,
-        point.level,
+        reading.captured_at_dt,
+        reading.sensor_key,
+        reading.city,
+        reading.country,
+        reading.latitude,
+        reading.longitude,
+        reading.cpm,
+        reading.level,
     )
 
 
 async def insert_alert(alert) -> None:
-    """Save one alert permanently to the alerts table."""
     if not pool:
         return
     await pool.execute(
         """
-        INSERT INTO alerts (captured_at, sensor_key, location_name,
+        INSERT INTO alerts (captured_at, sensor_key, city, country,
                             latitude, longitude, cpm, level, alert_text)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         """,
         alert.captured_at_dt,
         alert.sensor_key,
-        alert.location_name,
+        alert.city,
+        alert.country,
         alert.latitude,
         alert.longitude,
         alert.cpm,
@@ -70,19 +69,17 @@ async def insert_alert(alert) -> None:
 
 
 async def get_sensor_history(sensor_key: str, hours: int = 24) -> list[dict]:
-    """All readings for one sensor in the last N hours, oldest first."""
     if not pool:
         return []
     rows = await pool.fetch(
         """
-        SELECT captured_at, cpm, level, latitude, longitude, location_name
+        SELECT captured_at, cpm, level, latitude, longitude, city, country
         FROM readings
         WHERE sensor_key = $1
           AND captured_at > NOW() - MAKE_INTERVAL(hours => $2)
         ORDER BY captured_at ASC
         """,
-        sensor_key,
-        hours,
+        sensor_key, hours,
     )
     return [dict(row) for row in rows]
 
@@ -109,12 +106,11 @@ async def get_timeseries(days: int = 7, interval: str = "1 hour") -> list[dict]:
 
 
 async def get_alert_history(days: int = 30) -> list[dict]:
-    """All alerts in the last N days, most recent first."""
     if not pool:
         return []
     rows = await pool.fetch(
         """
-        SELECT captured_at, sensor_key, location_name,
+        SELECT captured_at, sensor_key, city, country,
                latitude, longitude, cpm, level, alert_text
         FROM alerts
         WHERE captured_at > NOW() - MAKE_INTERVAL(days => $1)

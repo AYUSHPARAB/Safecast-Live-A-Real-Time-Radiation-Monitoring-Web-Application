@@ -4,12 +4,15 @@ from typing import Optional
 import redis.asyncio as redis
 
 from .config import settings
-from .models import SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell
+from .models import SensorCurrentReading, RadiationAlert, GlobalStats, HeatmapCell, RadiationSpike, TopHotspots
 
 SENSOR_PREFIX = "sensor:"
 HEAT_PREFIX = "heat:"
 ALERTS_KEY = "alerts"
 STATS_KEY = "stats:current"
+CONFIG_KEY = "config:threshold"
+SPIKES_KEY = "spikes"
+TOP_KEY = "top:current"
 
 
 class Cache:
@@ -74,6 +77,12 @@ class Cache:
         async for _ in self.r.scan_iter(match=SENSOR_PREFIX + "*"):
             count += 1
         return count
-
+    async def put_threshold(self, threshold: float) -> None:
+        await self.r.set(CONFIG_KEY, threshold)
+    async def get_threshold(self) -> float | None:
+        v = await self.r.get(CONFIG_KEY)
+        return float(v) if v is not None else None
+    async def put_spike(self, spike: RadiationSpike) -> None:
+        await self.r.
 
 cache = Cache()

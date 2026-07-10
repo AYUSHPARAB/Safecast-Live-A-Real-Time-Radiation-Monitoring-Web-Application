@@ -82,4 +82,3 @@ async def run_consumer() -> None:
         raise
     finally:
         await consumer.stop()
-        
