@@ -128,7 +128,7 @@ async def get_all_sensors() -> list[dict]:
     rows = await pool.fetch(
         """
         SELECT DISTINCT ON (sensor_key)
-               sensor_key, device_id, location_name,
+               sensor_key, city, country,
                latitude, longitude, cpm, level, captured_at
         FROM readings
         ORDER BY sensor_key, captured_at DESC
