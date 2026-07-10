@@ -99,11 +99,15 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 8
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
   flink-submitter:
     build: ./flink-job
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
     depends_on:
       flink-jobmanager:
         condition: service_started
@@ -119,7 +123,7 @@ services:
       - |
         until bash -c 'echo > /dev/tcp/flink-jobmanager/8081' 2>/dev/null; do echo "waiting for jobmanager..."; sleep 3; done
         sleep 30
-        flink run -m flink-jobmanager:8081 -pyclientexec python3 -pyexec python3 -pyfs /opt/flink/usrlib/config.py -py /opt/flink/usrlib/flink_job.py
+        flink run -m flink-jobmanager:8081 -pyclientexec python3 -pyexec python3 -pyfs /opt/flink/usrlib -py /opt/flink/usrlib/flink_job.py
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -157,10 +161,10 @@ services:
         condition: service_started
     restart: unless-stopped
   frontend:
-      build: ./frontend
-      container_name: frontend
-      ports:
-        - "5173:5173"
-      depends_on:
-        - backend
-      restart: unless-stopped
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped

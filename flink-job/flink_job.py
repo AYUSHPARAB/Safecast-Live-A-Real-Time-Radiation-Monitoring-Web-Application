@@ -1,17 +1,18 @@
 import json
+import os
 import math
 from datetime import datetime, timezone
+import threading
 import config
+import redis as redis_lib
 import hashlib
-import pycountry
-import reverse_geocoder as rg
-
 from confluent_kafka import Consumer as KafkaConsumer
-from pyflink.common import Time, WatermarkStrategy, Duration, Types, RestartStrategies
-from pyflink.datastream.window import TumblingProcessingTimeWindows
+from pyflink.common import Time
+from pyflink.datastream.window import TumblingEventTimeWindows, TumblingProcessingTimeWindows
 from pyflink.datastream.functions import AggregateFunction
 from pyflink.datastream.window import TumblingProcessingTimeWindows
 from pyflink.datastream.functions import ProcessWindowFunction
+from pyflink.common import WatermarkStrategy, Duration, Types
 from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
@@ -23,62 +24,41 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
 )
 from pyflink.datastream.functions import ProcessAllWindowFunction
+import pycountry, reverse_geocoder as rg
 
 # ── Geocoder (loads dataset once at startup) 
 _GEO = rg.RGeocoder(mode=1, verbose=False)
 _location_cache = {}
 
-# Dynamic config — background thread polling radiation-config topic
-_current_threshold = config.ALERT_THRESHOLD_CPM
-
-# ── Constants 
 LOW_MS  = int(datetime(2011, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 HIGH_MS = int(datetime(2027, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
 B32 = "0123456789bcdefghjkmnpqrstuvwxyz"
 LEVEL_RANK = {"safe": 0, "warning": 1, "elevated": 2, "high": 3}
 
-# ── Helper: country code → full name 
-def _country_name(cc):
-    try:
-        return pycountry.countries.get(alpha_2=cc).name   
-    except Exception:
-        return cc  
 
+# Redis client — shared across all Flink processes
+_redis = None
 
-def _config_watcher():
-    global _current_threshold, _current_bbox_enabled, _current_bbox
-    consumer = KafkaConsumer({
-    "bootstrap.servers": config.KAFKA_BOOTSTRAP,
-    "group.id":          "flink-config-watcher",
-    "auto.offset.reset": "latest"
-    })
-    consumer.subscribe([config.KAFKA_CONFIG_TOPIC])
-    while True:
-        msg = consumer.poll(1.0)
-        if msg is None or msg.error():
-            continue
+def get_redis():
+    global _redis
+    if _redis is None:
         try:
-            data = json.loads(msg.value().decode("utf-8"))
-            if "threshold" in data:
-                _current_threshold = float(data["threshold"])
-                print(f"[CONFIG] Threshold updated to {_current_threshold}")
-            if "bbox_enabled" in data:
-                _current_bbox_enabled = bool(data["bbox_enabled"])
-            if "bbox_lat_min" in data:
-                _current_bbox["lat_min"] = float(data["bbox_lat_min"])
-                _current_bbox["lat_max"] = float(data["bbox_lat_max"])
-                _current_bbox["lon_min"] = float(data["bbox_lon_min"])
-                _current_bbox["lon_max"] = float(data["bbox_lon_max"])
+            _redis = redis_lib.Redis(
+                host=config.REDIS_HOST,
+                port=config.REDIS_PORT,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=1
+            )
+            # Set default threshold if not already set
+            if not _redis.exists("threshold"):
+                _redis.set("threshold", config.ALERT_THRESHOLD_CPM)
+            print(f"[REDIS] Connected. Threshold = {_redis.get('threshold')}")
         except Exception as ex:
-            print(f"[CONFIG] Error: {ex}")
+            print(f"[REDIS] Connection failed: {ex}")
+    return _redis
 
-# Start background watcher thread
-_watcher_thread = threading.Thread(target=_config_watcher, daemon=True)
-_watcher_thread.start()
-
-
-# ── Misc helpers 
 
 def _num(x):
     try:
@@ -86,6 +66,7 @@ def _num(x):
         return None if math.isnan(v) else v
     except (TypeError, ValueError):
         return None
+
 
 def parse_time(s):
     s = str(s).strip()
@@ -95,7 +76,6 @@ def parse_time(s):
     dt = datetime.strptime(s, fmt)
     return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
 
-# ── Operator functions 
 def parse(raw: str):
     """Convert raw Kafka JSON string -> Python dict with typed fields."""
     try:
@@ -105,11 +85,17 @@ def parse(raw: str):
             "uploaded_at": d.get("uploaded_time"),
             "latitude":    _num(d.get("latitude")),
             "longitude":   _num(d.get("longitude")),
-            "cpm":         _num(d.get("value")),
-            "unit":        str(d.get("unit", "")).strip().lower(),
+            "cpm":         _num(d.get("value")),                     
         }
     except (ValueError, TypeError):
         return None
+
+def _country_name(cc):
+    try:
+        return pycountry.countries.get(alpha_2=cc).name   
+    except Exception:
+        return cc  
+    
 
 # ── Helper: lat/lon → city + country 
 def _geocode(lat, lon):
@@ -131,11 +117,17 @@ def sensor_key(e):
     ck = "%.6f_%.6f" % (lat, lon)                       
     return hashlib.md5(ck.encode()).hexdigest()[:8].upper()
 
+
 def enrich(e):
-    """Adding level, sensor_key, city, country to every reading."""
-    e = dict(e)
+    e   = dict(e)
     cpm = e["cpm"]
-    t = _current_threshold  
+
+    # Read threshold from Redis — falls back to default if unavailable
+    try:
+        t = float(get_redis().get("threshold") or config.ALERT_THRESHOLD_CPM)
+    except Exception:
+        t = config.ALERT_THRESHOLD_CPM
+
     if   cpm >= t * 3: e["level"] = "high"
     elif cpm >= t * 2: e["level"] = "elevated"
     elif cpm >= t:     e["level"] = "warning"
@@ -151,6 +143,7 @@ def enrich(e):
     e["city"], e["country"] = _location_cache[sk]
 
     return e
+
                              
 
 def geohash_encode(lat, lon, precision):
@@ -177,7 +170,6 @@ def add_geohash(e):
     e["geohash"], e["cell_lat"], e["cell_lon"] = gh, clat, clon
     return e
 
-# ── Flink operators 
 class CapturedTimestampAssigner(TimestampAssigner):
     def extract_timestamp(self, value, record_timestamp):
         return value["captured_at"]
@@ -196,7 +188,9 @@ class LatestPerSensor(KeyedProcessFunction):
             yield dict(e, sensor_key=sensor_key(e))
 
 class AlertDedup(KeyedProcessFunction):
-    """Emit alert only if 10-min cooldown expired OR severity changed."""
+    """
+    Per sensor: emit alert only if cooldown expired OR severity changed.
+    """
     COOLDOWN_MS = 10 * 60 * 1000  #10 minutes cool down period
 
     def open(self, runtime_context):
@@ -389,7 +383,6 @@ def make_sink(topic):
         .build()
     )
 
-# ── Main pipeline 
 
 def main():
     env = StreamExecutionEnvironment.get_execution_environment()
@@ -397,7 +390,7 @@ def main():
     env.set_parallelism(config.PARALLELISM)
     env.add_jars(config.KAFKA_CONNECTOR_JAR)
 
-    # Source: radiation-raw Kafka topic
+
     source = (
         KafkaSource.builder()
         .set_bootstrap_servers(config.KAFKA_BOOTSTRAP)
@@ -413,7 +406,7 @@ def main():
         source, WatermarkStrategy.no_watermarks(), "kafka-raw-radiation"
     )
 
-    # Parse -> filter junk -> watermark
+    # Operator: parse, drop missing & junk data, attach event times
     parsed = (
         raw_stream
         .map(parse, output_type=Types.PICKLED_BYTE_ARRAY())
@@ -428,7 +421,7 @@ def main():
     )
     timed = parsed.assign_timestamps_and_watermarks(watermark)
 
-    # Clean filter: drop invalid readings
+    # Operator: discard empty & invalid readings
     clean = timed.filter(
     lambda e: (
         e["unit"] == "cpm"
@@ -443,10 +436,12 @@ def main():
                  and e["longitude"] == 0.0)
     )
 )
+
+
     # Enrich: add level, sensor_key, city, country
     enriched = clean.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
 
-    # Operator: latest reading per sensor 
+    # Operator: latest radiation per location 
     latest = (
         enriched
         .key_by(sensor_key, key_type=Types.STRING())
@@ -481,7 +476,7 @@ def main():
 )
 
     # Sink C: latest reading per sensor from each location-> radiation-current topic
-    (enriched
+    (latest
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_LATEST_TOPIC)))
     
