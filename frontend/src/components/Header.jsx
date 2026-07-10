@@ -1,17 +1,16 @@
 export default function Header() {
   return (
-    <header className="header">
-      <div className="header-left">
-        <span className="logo">☢️</span>
-
+    <header className="rc-head">
+      <div className="rc-logo">
+        <span className="rc-pulse" />
         <div>
-          <h2>Radiation Monitor</h2>
+          <div className="rc-title rc-disp">SAFECAST&nbsp;LIVE</div>
+          <div className="rc-sub rc-mono">RADIATION MONITORING CONSOLE</div>
         </div>
       </div>
-
-      <div className="status-live">
-        <span className="live-dot"></span>
-        LIVE
+      <div className="rc-spacer" />
+      <div className="rc-conn rc-mono" aria-label="Backend connection status">
+        <span className="rc-dot" /> BACKEND NOT CONNECTED
       </div>
     </header>
   );
