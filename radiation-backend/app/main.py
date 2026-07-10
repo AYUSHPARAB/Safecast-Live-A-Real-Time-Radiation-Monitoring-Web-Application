@@ -104,3 +104,4 @@ async def websocket_endpoint(ws: WebSocket):
     except Exception:
         logger.exception("WS error — dropping connection")
         manager.disconnect(ws)
+        
