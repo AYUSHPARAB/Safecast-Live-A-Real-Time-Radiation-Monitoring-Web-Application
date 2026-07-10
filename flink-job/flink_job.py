@@ -1,16 +1,17 @@
 import json
 import math
 from datetime import datetime, timezone
-import threading
 import config
 import hashlib
+import pycountry
+import reverse_geocoder as rg
+
 from confluent_kafka import Consumer as KafkaConsumer
-from pyflink.common import Time
-from pyflink.datastream.window import TumblingEventTimeWindows, TumblingProcessingTimeWindows
+from pyflink.common import Time, WatermarkStrategy, Duration, Types, RestartStrategies
+from pyflink.datastream.window import TumblingProcessingTimeWindows
 from pyflink.datastream.functions import AggregateFunction
 from pyflink.datastream.window import TumblingProcessingTimeWindows
 from pyflink.datastream.functions import ProcessWindowFunction
-from pyflink.common import WatermarkStrategy, Duration, Types
 from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment
@@ -22,31 +23,36 @@ from pyflink.datastream.connectors.kafka import (
     KafkaSink, KafkaRecordSerializationSchema, DeliveryGuarantee
 )
 from pyflink.datastream.functions import ProcessAllWindowFunction
-import pycountry, reverse_geocoder as rg
 
+# ── Geocoder (loads dataset once at startup) 
 _GEO = rg.RGeocoder(mode=1, verbose=False)
 _location_cache = {}
 
 # Dynamic config — background thread polling radiation-config topic
 _current_threshold = config.ALERT_THRESHOLD_CPM
-_current_bbox_enabled = config.BBOX_ENABLED
-_current_bbox = {
-    "lat_min": config.BBOX_LAT_MIN,
-    "lat_max": config.BBOX_LAT_MAX,
-    "lon_min": config.BBOX_LON_MIN,
-    "lon_max": config.BBOX_LON_MAX,
-}
-# _config_lock = threading.Lock()
 
+# ── Constants 
 LOW_MS  = int(datetime(2011, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 HIGH_MS = int(datetime(2027, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
 B32 = "0123456789bcdefghjkmnpqrstuvwxyz"
 LEVEL_RANK = {"safe": 0, "warning": 1, "elevated": 2, "high": 3}
 
+# ── Helper: country code → full name 
+def _country_name(cc):
+    try:
+        return pycountry.countries.get(alpha_2=cc).name   
+    except Exception:
+        return cc  
+
+
 def _config_watcher():
     global _current_threshold, _current_bbox_enabled, _current_bbox
-    consumer = KafkaConsumer({...})
+    consumer = KafkaConsumer({
+    "bootstrap.servers": config.KAFKA_BOOTSTRAP,
+    "group.id":          "flink-config-watcher",
+    "auto.offset.reset": "latest"
+    })
     consumer.subscribe([config.KAFKA_CONFIG_TOPIC])
     while True:
         msg = consumer.poll(1.0)
@@ -71,8 +77,8 @@ def _config_watcher():
 _watcher_thread = threading.Thread(target=_config_watcher, daemon=True)
 _watcher_thread.start()
 
-# CONFIG_STATE = MapStateDescriptor(
-#     "config_state", Types.STRING(), Types.FLOAT())
+
+# ── Misc helpers 
 
 def _num(x):
     try:
@@ -89,7 +95,9 @@ def parse_time(s):
     dt = datetime.strptime(s, fmt)
     return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
 
+# ── Operator functions 
 def parse(raw: str):
+    """Convert raw Kafka JSON string -> Python dict with typed fields."""
     try:
         d = json.loads(raw)
         return {
@@ -99,58 +107,49 @@ def parse(raw: str):
             "longitude":   _num(d.get("longitude")),
             "cpm":         _num(d.get("value")),
             "unit":        str(d.get("unit", "")).strip().lower(),
-            "device_id":   str(d.get("device_id", "")).strip(),
-            "location_name": str(d.get("location_name") or "").strip(), 
-            "md5":           str(d.get("md5") or "").strip(),                        
         }
     except (ValueError, TypeError):
         return None
 
-def _country_name(cc):
+# ── Helper: lat/lon → city + country 
+def _geocode(lat, lon):
+    """Returns (city, country) strings. Cached by sensor_key."""
     try:
-        return pycountry.countries.get(alpha_2=cc).name   
-    except Exception:
-        return cc  
-    
-
-def make_location(lat, lon):
-    try:
-        r = _GEO.query([(lat, lon)])[0]
-        city = (r.get("name") or "").strip()
-        cc   = (r.get("cc") or "").strip()
+        r       = _GEO.query([(lat, lon)])[0]
+        city    = (r.get("name") or "").strip()
+        cc      = (r.get("cc")   or "").strip()
         country = _country_name(cc) if cc else ""
-        parts = [p for p in (city, country) if p]
-        return ", ".join(parts) if parts else "%.3f,%.3f" % (lat, lon)   
+        return city, country
     except Exception:
-        return "%.3f,%.3f" % (lat, lon)
-
-def location_for(cache_key, lat, lon):
-    if cache_key not in _location_cache:
-        _location_cache[cache_key] = make_location(lat, lon)
-    return _location_cache[cache_key]
-
+        return "", "%.6f,%.6f" % (lat, lon)
 
 def sensor_key(e):
     lat = e.get("latitude")
     lon = e.get("longitude")
     if lat is None or lon is None:
         return "00000000"
-    ck = "%.3f_%.3f" % (lat, lon)                       
-    h  = hashlib.md5(ck.encode()).hexdigest()[:8].upper()
-    return f"{h}"
+    ck = "%.6f_%.6f" % (lat, lon)                       
+    return hashlib.md5(ck.encode()).hexdigest()[:8].upper()
 
 def enrich(e):
+    """Adding level, sensor_key, city, country to every reading."""
     e = dict(e)
     cpm = e["cpm"]
-    t = _current_threshold  # read global directly, no lock
+    t = _current_threshold  
     if   cpm >= t * 3: e["level"] = "high"
     elif cpm >= t * 2: e["level"] = "elevated"
     elif cpm >= t:     e["level"] = "warning"
     else:              e["level"] = "safe"
+
     sk = sensor_key(e)
     e["sensor_key"] = sk
-    existing = (e.get("location_name") or "").strip()
-    e["location"] = existing if existing else location_for(sk, e["latitude"], e["longitude"])
+
+    # City + country from geocoder (cached per sensor_key)
+    if sk not in _location_cache:
+        city, country = _geocode(e["latitude"], e["longitude"])
+        _location_cache[sk] = (city, country)
+    e["city"], e["country"] = _location_cache[sk]
+
     return e
                              
 
@@ -178,35 +177,13 @@ def add_geohash(e):
     e["geohash"], e["cell_lat"], e["cell_lon"] = gh, clat, clon
     return e
 
-def cell_location(gh, lat, lon):
-    if gh not in _location_cache:
-        try:
-            r = _GEO.query([(lat, lon)])[0]
-            city = r["name"]
-            cc   = r["cc"]
-            country = COUNTRY_NAMES.get(cc, cc)
-            name = f"{city}, {country}" if city else country     # "Fukushima, Japan"
-        except Exception:
-            name = f"{lat:.3f},{lon:.3f}"                        # fallback: coords
-        _location_cache[gh] = name
-    return _location_cache[gh]
-
-class BoundingBoxFilter:
-    def __call__(self, e):
-        global _current_bbox_enabled, _current_bbox
-        if not _current_bbox_enabled:
-            return True
-        return (
-            _current_bbox["lat_min"] <= e["latitude"]  <= _current_bbox["lat_max"]
-            and _current_bbox["lon_min"] <= e["longitude"] <= _current_bbox["lon_max"]
-        )
-
+# ── Flink operators 
 class CapturedTimestampAssigner(TimestampAssigner):
     def extract_timestamp(self, value, record_timestamp):
         return value["captured_at"]
 
 class LatestPerSensor(KeyedProcessFunction):
-
+    """Emit only the most recent reading per sensor  -> radiation-current."""
     def open(self, runtime_context):
         self.last_ts = runtime_context.get_state(
             ValueStateDescriptor("last_captured", Types.LONG())
@@ -219,9 +196,7 @@ class LatestPerSensor(KeyedProcessFunction):
             yield dict(e, sensor_key=sensor_key(e))
 
 class AlertDedup(KeyedProcessFunction):
-    """
-    Per sensor: emit alert only if cooldown expired OR severity changed.
-    """
+    """Emit alert only if 10-min cooldown expired OR severity changed."""
     COOLDOWN_MS = 10 * 60 * 1000  #10 minutes cool down period
 
     def open(self, runtime_context):
@@ -271,7 +246,6 @@ class GlobalStatsAggregate(AggregateFunction):
     def get_result(self, acc):
         avg = round(acc["total"] / acc["count"], 2) if acc["count"] else 0.0
         return json.dumps({
-            "type":           "global_stats",
             "avg_cpm":        avg,
             "max_cpm":        round(acc["max_cpm"], 2),
             "active_sensors": len(acc["devices"]),
@@ -341,8 +315,10 @@ class HeatmapAggregate(AggregateFunction):
             acc["worst"] = e["level"]
         acc["clat"], acc["clon"] = e["cell_lat"], e["cell_lon"]
         return acc
+    
     def get_result(self, acc):
         return acc
+    
     def merge(self, a, b):
         a["count"]  += b["count"]
         a["total"]  += b["total"]
@@ -355,17 +331,25 @@ class AttachCellMeta(ProcessWindowFunction):
     def process(self, key, ctx, aggregations):
         acc = next(iter(aggregations))
         avg = round(acc["total"] / acc["count"], 2) if acc["count"] else 0.0
+        # Get city/country for cell center
+        sk = hashlib.md5(("%.3f_%.3f" % (acc["clat"], acc["clon"])).encode()).hexdigest()[:8].upper()
+        if sk not in _location_cache:
+            city, country = _geocode(acc["clat"], acc["clon"])
+            _location_cache[sk] = (city, country)
+        city, country = _location_cache[sk]
         yield {
-            "type": "heatmap_cell",
-            "geohash": key,
-            "location": location_for(key, acc["clat"], acc["clon"]),   
+            "geohash":  key,
+            "city":     city,
+            "country":  country,
+            "city": city,
             "cell_lat": round(acc["clat"], 5),
             "cell_lon": round(acc["clon"], 5),
-            "avg_cpm": avg,
-            "max_cpm": round(acc["max_cpm"], 2),
-            "count": acc["count"],
-            "level": acc["worst"],
+            "avg_cpm":  avg,
+            "max_cpm":  round(acc["max_cpm"], 2),
+            "count":    acc["count"],
+            "level":    acc["worst"],
         }
+
         
 class TopNHotspots(ProcessAllWindowFunction):
     """Rank all cells in the window by danger, keep worst N (non-safe only)."""
@@ -375,7 +359,8 @@ class TopNHotspots(ProcessAllWindowFunction):
         out = [{
             "rank": i + 1,
             "geohash": c["geohash"],
-            "location": c["location"], 
+            "city":    c["city"],
+            "country": c["country"],
             "lat": c["cell_lat"],
             "lon": c["cell_lon"],
             "max_cpm": c["max_cpm"],
@@ -384,77 +369,11 @@ class TopNHotspots(ProcessAllWindowFunction):
             "count": c["count"],
         } for i, c in enumerate(ranked)]
         yield json.dumps({
-            "type": "top_hotspots",
             "count": len(out),
             "hotspots": out,
         })
-# class DynamicConfig(BroadcastProcessFunction):
-#     """
-#     Listens to radiation-config topic for runtime config changes.
-#     Applies updated threshold and bounding box to the enriched stream.
-    
-#     Config message format (from P4 settings panel):
-#         {"threshold": 50.0}
-#         {"bbox_enabled": 1.0, "bbox_lat_min": 30.0, "bbox_lat_max": 46.0,
-#          "bbox_lon_min": 129.0, "bbox_lon_max": 146.0}
-#     """
 
-#     def process_element(self, e, ctx, out):
-#         # Called for every radiation reading
-#         state = ctx.get_broadcast_state(CONFIG_STATE)
-
-#         # Read threshold — fall back to config.py value if not set yet
-#         threshold = state.get("threshold")
-#         if threshold is None:
-#             threshold = config.ALERT_THRESHOLD_CPM
-
-#         # Read bbox settings
-#         bbox_enabled = state.get("bbox_enabled")
-
-#         # Apply bounding box if enabled via broadcast
-#         if bbox_enabled:
-#             lat_min = state.get("bbox_lat_min") or config.BBOX_LAT_MIN
-#             lat_max = state.get("bbox_lat_max") or config.BBOX_LAT_MAX
-#             lon_min = state.get("bbox_lon_min") or config.BBOX_LON_MIN
-#             lon_max = state.get("bbox_lon_max") or config.BBOX_LON_MAX
-#             if not (lat_min <= e["latitude"]  <= lat_max
-#                     and lon_min <= e["longitude"] <= lon_max):
-#                 return   # outside box — drop silently
-
-#         # Re-apply threshold with current dynamic value
-#         cpm = e["cpm"]
-#         if   cpm >= threshold * 3: e["level"] = "high"
-#         elif cpm >= threshold * 2: e["level"] = "elevated"
-#         elif cpm >= threshold:     e["level"] = "warning"
-#         else:                      e["level"] = "safe"
-
-#         out.collect(e)
-
-#     def process_broadcast_element(self, config_msg, ctx, out):
-#         # Called when a new config message arrives from radiation-config topic
-#         try:
-#             msg = json.loads(config_msg)
-#             state = ctx.get_broadcast_state(CONFIG_STATE)
-
-#             if "threshold" in msg:
-#                 new_t = float(msg["threshold"])
-#                 state.put("threshold", new_t)
-#                 print(f"[CONFIG] Threshold updated to {new_t} CPM")
-
-#             if "bbox_enabled" in msg:
-#                 state.put("bbox_enabled", float(msg["bbox_enabled"]))
-#                 print(f"[CONFIG] BBox enabled: {msg['bbox_enabled']}")
-
-#             if "bbox_lat_min" in msg:
-#                 state.put("bbox_lat_min", float(msg["bbox_lat_min"]))
-#                 state.put("bbox_lat_max", float(msg["bbox_lat_max"]))
-#                 state.put("bbox_lon_min", float(msg["bbox_lon_min"]))
-#                 state.put("bbox_lon_max", float(msg["bbox_lon_max"]))
-#                 print(f"[CONFIG] BBox updated: {msg}")
-
-#         except (ValueError, KeyError) as ex:
-#             print(f"[CONFIG] Bad config message: {ex}")
-
+# ── Kafka sink factory 
 
 def make_sink(topic):
     return (
@@ -470,6 +389,7 @@ def make_sink(topic):
         .build()
     )
 
+# ── Main pipeline 
 
 def main():
     env = StreamExecutionEnvironment.get_execution_environment()
@@ -477,7 +397,7 @@ def main():
     env.set_parallelism(config.PARALLELISM)
     env.add_jars(config.KAFKA_CONNECTOR_JAR)
 
-
+    # Source: radiation-raw Kafka topic
     source = (
         KafkaSource.builder()
         .set_bootstrap_servers(config.KAFKA_BOOTSTRAP)
@@ -493,20 +413,7 @@ def main():
         source, WatermarkStrategy.no_watermarks(), "kafka-raw-radiation"
     )
 
-    # # Config source — reads runtime config changes from radiation-config topic
-    # config_source = env.from_source(
-    #     KafkaSource.builder()
-    #     .set_bootstrap_servers(config.KAFKA_BOOTSTRAP)
-    #     .set_topics(config.KAFKA_CONFIG_TOPIC)
-    #     .set_group_id("flink-config-consumer")
-    #     .set_starting_offsets(KafkaOffsetsInitializer.latest())
-    #     .set_value_only_deserializer(SimpleStringSchema())
-    #     .build(),
-    #     WatermarkStrategy.no_watermarks(),
-    #     "config-source"
-    # )
-
-    # Operator: parse, drop missing & junk data, attach event times
+    # Parse -> filter junk -> watermark
     parsed = (
         raw_stream
         .map(parse, output_type=Types.PICKLED_BYTE_ARRAY())
@@ -521,7 +428,7 @@ def main():
     )
     timed = parsed.assign_timestamps_and_watermarks(watermark)
 
-    # Operator: discard empty & invalid readings
+    # Clean filter: drop invalid readings
     clean = timed.filter(
     lambda e: (
         e["unit"] == "cpm"
@@ -536,28 +443,12 @@ def main():
                  and e["longitude"] == 0.0)
     )
 )
+    # Enrich: add level, sensor_key, city, country
+    enriched = clean.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
 
-    # Operator: geospatial bounding-box filter
-    bounded = clean.filter(BoundingBoxFilter())
-
-    enriched = bounded.map(enrich, output_type=Types.PICKLED_BYTE_ARRAY())
-
-    # Broadcast config stream to all parallel instances
-    # config_broadcast = config_source.broadcast(CONFIG_STATE)
-
-    # # Apply dynamic config operator
-    # dynamic = (
-    #     enriched
-    #     .connect(config_broadcast)
-    #     .process(DynamicConfig(), output_type=Types.PICKLED_BYTE_ARRAY())
-    # )
-
-    # Background thread handles config — no broadcast needed
-    dynamic = enriched
-
-    # Operator: latest radiation per location 
+    # Operator: latest reading per sensor 
     latest = (
-        dynamic
+        enriched
         .key_by(sensor_key, key_type=Types.STRING())
         .process(LatestPerSensor(), output_type=Types.PICKLED_BYTE_ARRAY())
     )
@@ -575,13 +466,13 @@ def main():
     )
 
     # Sink A: all clean readings -> radiation-clean topic
-    (dynamic
+    (enriched
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_NORMAL_TOPIC)))
 
     # Sink B: readings above threshold -> radiation-alerts topic
 
-    (dynamic
+    (enriched
     .filter(lambda e: e["level"] != "safe")
     .key_by(sensor_key, key_type=Types.STRING())
     .process(AlertDedup(), output_type=Types.PICKLED_BYTE_ARRAY())
@@ -590,13 +481,13 @@ def main():
 )
 
     # Sink C: latest reading per sensor from each location-> radiation-current topic
-    (latest
+    (enriched
         .map(lambda e: json.dumps(e), output_type=Types.STRING())
         .sink_to(make_sink(config.KAFKA_LATEST_TOPIC)))
     
     # Sink D: global stats every 30 seconds
     (
-    dynamic
+    enriched
     .window_all(TumblingProcessingTimeWindows.of(Time.seconds(30)))
     .aggregate(GlobalStatsAggregate(), output_type=Types.STRING())
     .sink_to(make_sink(config.KAFKA_STATS_TOPIC))
