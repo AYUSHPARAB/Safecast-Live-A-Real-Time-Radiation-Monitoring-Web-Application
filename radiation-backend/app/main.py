@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
         logger.exception("Could not reach Redis at %s", settings.redis_url)
 
     try:
-        await db.connect()
+        await db.connect_db()
     except Exception:
         logger.exception("Could not reach the database at %s", settings.database_url)
 
@@ -65,6 +65,7 @@ app.include_router(alerts.router)
 app.include_router(history.router)
 app.include_router(spikes.router)
 app.include_router(top.router)
+app.include_router(config_routes.router)
 
 
 @app.get("/api/health")

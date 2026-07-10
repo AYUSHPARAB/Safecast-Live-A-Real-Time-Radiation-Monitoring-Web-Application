@@ -2,7 +2,6 @@
 from fastapi import APIRouter
 
 from ..cache import cache
-from ..producer import publish_config
 from ..ws_manager import manager
 from ..models import ConfigUpdate, WSMessage
 from ..config import settings
@@ -19,7 +18,6 @@ async def get_threshold():
 @router.post("/config/threshold")
 async def set_threshold(body: ConfigUpdate):
     await cache.put_threshold(body.threshold)
-    await publish_config(body.threshold)
     await manager.broadcast(
         WSMessage(channel="config", data={"threshold": body.threshold}).model_dump()
     )
