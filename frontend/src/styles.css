@@ -120,7 +120,20 @@ select {
   background: var(--muted);
 }
 
+/* Side rails */
+.rc-rail {
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--panel);
+}
 
+.rc-rail.left {
+  border-right: 1px solid var(--border);
+}
+
+.rc-rail.right {
+  border-left: 1px solid var(--border);
+}
 
 /* Map */
 .rc-map-wrap {
@@ -162,7 +175,95 @@ select {
   color: var(--accent);
 }
 
+/* Configuration panel */
+.rc-sec {
+  margin-bottom: 20px;
+}
 
+.rc-eyebrow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.rc-field {
+  margin-bottom: 14px;
+}
+
+.rc-flabel {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.rc-flabel span {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+select {
+  width: 100%;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.rc-apply,
+.rc-btn {
+  width: 100%;
+  padding: 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.rc-apply {
+  border: 0;
+  background: var(--accent);
+  color: #04252b;
+  font-weight: 600;
+}
+
+.rc-btn {
+  border: 1px solid var(--border);
+  background: var(--elev);
+  color: var(--text);
+}
+
+.rc-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.rc-btn.on {
+  border-color: var(--accent);
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--accent);
+}
+
+.rc-heat {
+  margin-top: 8px;
+}
+
+.rc-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
 
 /* Statistics and feeds */
 .rc-gauge {
