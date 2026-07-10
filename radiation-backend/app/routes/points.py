@@ -10,6 +10,7 @@ router = APIRouter(prefix="/api", tags=["points"])
 async def get_points(
     min_cpm: float | None = Query(default=None, ge=0),
     bbox: str | None = Query(default=None, description="min_lon,min_lat,max_lon,max_lat"),
+    limit: int = Query(default=500, ge=1, le=1000)
 ):
     points = await cache.get_all_sensors()
     if min_cpm is not None:
@@ -24,4 +25,4 @@ async def get_points(
             p for p in points
             if min_lat <= p["latitude"] <= max_lat and min_lon <= p["longitude"] <= max_lon
         ]
-    return points
+    return points[:limit]
