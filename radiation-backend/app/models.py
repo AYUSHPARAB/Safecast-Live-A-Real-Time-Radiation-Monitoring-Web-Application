@@ -61,7 +61,7 @@ class RadiationSpike(RadiationReading):
     spike_type: str
     previous_cpm: float
     rolling_avg_cpm: float
-    jump_rati: float
+    jump_ratio: float
 
 
     #Aggregates
