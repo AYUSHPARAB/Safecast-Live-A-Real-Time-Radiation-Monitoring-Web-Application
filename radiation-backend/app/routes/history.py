@@ -1,5 +1,6 @@
 # app/routes/history.py
 from fastapi import APIRouter, HTTPException, Query, Path
+from datetime import datetime
 
 from .. import db
 
@@ -38,3 +39,13 @@ async def get_alert_history(
 ):
     """All alerts in the last N hours, most recent first."""
     return await db.get_alert_history(hours=hours)
+
+
+@router.get("/points/history")
+async def get_points_history(
+    start: datetime = Query(description="ISO datetime e.g. 2026-07-11T09:00:00Z"),
+    end: datetime = Query(description="ISO datetime e.g. 2026-07-11T10:00:00Z"),
+    limit: int = Query(default=2000, le=5000),
+):
+    """All readings between two timestamps for frontend replay."""
+    return await db.get_points_history(start=start, end=end, limit=limit)

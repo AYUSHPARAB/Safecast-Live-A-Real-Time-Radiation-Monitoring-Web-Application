@@ -162,3 +162,24 @@ async def get_all_sensors() -> list[dict]:
                       "ingested_at": row["ingested_at"].isoformat()} 
         for row in rows
     ]
+
+
+async def get_points_history(start: datetime, end: datetime, limit: int = 2000) -> list[dict]:
+    if not pool:
+        return []
+    rows = await pool.fetch(
+        """
+        SELECT sensor_key, city, country, latitude, longitude,
+               cpm, level, ingested_at, captured_at
+        FROM readings
+        WHERE ingested_at BETWEEN $1 AND $2
+        ORDER BY ingested_at ASC
+        LIMIT $3
+        """,
+        start, end, limit,
+    )
+    return [
+        {**dict(row), "captured_at": row["captured_at"].isoformat(),
+                      "ingested_at": row["ingested_at"].isoformat()}
+        for row in rows
+    ]
