@@ -10,6 +10,13 @@ logger = logging.getLogger(__name__)
 
 pool: asyncpg.Pool | None = None
 
+_AUTO_INTERVAL = {
+    1:  "5 minutes",
+    6:  "30 minutes",
+    12: "1 hour",
+    24: "2 hours",
+}
+
 
 async def connect_db() -> None:
     """Open a connection pool to TimescaleDB. Called once at startup."""
@@ -89,17 +96,17 @@ async def get_sensor_history(sensor_key: str, hours: int = 24) -> list[dict]:
     ]
 
 
-async def get_timeseries(hours: int = 1, interval: str = "1 minute") -> list[dict]:
-    """Average and max cpm grouped by time bucket, for the last N hours."""
+async def get_timeseries(hours: int = 1) -> list[dict]:
     if not pool:
         return []
+    interval = _AUTO_INTERVAL.get(hours, "1 hour")  # fallback to 1 hour
     rows = await pool.fetch(
         f"""
         SELECT
             time_bucket(INTERVAL '{interval}', ingested_at) AS bucket,
             AVG(cpm)::float   AS avg_cpm,
             MAX(cpm)::float   AS max_cpm,
-            COUNT(*)          AS reading_count  
+            COUNT(*)          AS reading_count
         FROM readings
         WHERE ingested_at > NOW() - MAKE_INTERVAL(hours => $1)
         GROUP BY bucket
