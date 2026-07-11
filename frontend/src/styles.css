@@ -460,3 +460,33 @@ select {
     font-size: 9px;
   }
 }
+
+.rc-live-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--elev);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.rc-live-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Active state — filled cyan when connected */
+.rc-live-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04252b;
+  font-weight: 600;
+}
+ 
+/* Pulse animation for the header dot when live */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0   rgba(63, 185, 80, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(63, 185, 80, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(63, 185, 80, 0);   }
+}
