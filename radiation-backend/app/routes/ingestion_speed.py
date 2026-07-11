@@ -5,7 +5,7 @@ from ..cache import cache
 
 router = APIRouter(prefix="/api", tags=["ingestion-speed"])
 
-SPEED_KEY = "producer:speed_multiplier"
+SPEED_KEY = "speed_multiplier"
 
 
 class SpeedUpdate(BaseModel):

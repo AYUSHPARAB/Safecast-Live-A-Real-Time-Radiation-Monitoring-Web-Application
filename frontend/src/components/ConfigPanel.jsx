@@ -147,9 +147,6 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat }) {
               <option key={item.label}>{item.label}</option>
             ))}
           </select>
-          <p className="rc-hint">
-            Map navigation is local. Filtering will be applied by the backend later.
-          </p>
         </div>
 
         <div className="rc-field">
@@ -180,7 +177,6 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat }) {
         >
           {showHeat ? "Hide heatmap layer" : "Show heatmap layer"}
         </button>
-        <p className="rc-hint">Heatmap is empty until backend cells are integrated.</p>
       </section>
     </aside>
   );

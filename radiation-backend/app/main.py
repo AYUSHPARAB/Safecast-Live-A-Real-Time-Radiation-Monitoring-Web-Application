@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .mock import run_mock
-from .routes import points, stats, alerts, history, config as config_routes, spikes, top, ingestion_speed, threshold
+from .routes import points, stats, alerts, history, spikes, top, ingestion_speed, threshold
 from .cache import cache
 from .ws_manager import manager
 from .models import WSMessage

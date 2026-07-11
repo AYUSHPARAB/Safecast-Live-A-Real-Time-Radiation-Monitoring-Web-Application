@@ -77,7 +77,7 @@ export function getSensorHistory(sensorKey, hours = 24) {
 }
 
 export function postThreshold(threshold) {
-  return request("/api/config/threshold", {
+  return apiRequest("/api/config/threshold", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ threshold }),
@@ -85,7 +85,7 @@ export function postThreshold(threshold) {
 }
 
 export function postSpeed(multiplier) {
-  return request("/api/config/speed", {
+  return apiRequest("/api/config/speed", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ multiplier }),
