@@ -37,7 +37,7 @@ function Sparkline({ timeseries, color }) {
   );
 }
 
-export function StatsPanel({ stats, alertsCount, onMap }) {
+export function StatsPanel({ stats, timeseries, alertsCount, onMap }) {
   const average = stats?.avg_cpm ?? null;
   const color = average === null ? "var(--muted)" : COLORS[levelOf(average)];
 
@@ -50,7 +50,7 @@ export function StatsPanel({ stats, alertsCount, onMap }) {
         </div>
         <div className="unit">AVG CPM</div>
       </div>
-      <Sparkline timeseries={[]} color={color} />
+      <Sparkline timeseries={timeseries} color={color} />
       <div className="rc-statgrid">
         <div className="rc-stat"><div className="v">{stats?.max_cpm ?? "—"}</div><div className="l">Max CPM</div></div>
         <div className="rc-stat"><div className="v">{stats?.active_sensors ?? "—"}</div><div className="l">Sensors</div></div>
