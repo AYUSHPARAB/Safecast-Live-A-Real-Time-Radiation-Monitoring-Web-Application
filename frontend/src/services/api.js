@@ -95,3 +95,8 @@ export function postSpeed(multiplier) {
 export function getHealth({ signal } = {}) {
   return apiRequest("/api/health", { signal });
 }
+
+export function getPointsHistory(start, end, limit = 5000) {
+  const params = new URLSearchParams({ start, end, limit: String(limit) });
+  return apiRequest(`/api/points/history?${params.toString()}`);
+}
