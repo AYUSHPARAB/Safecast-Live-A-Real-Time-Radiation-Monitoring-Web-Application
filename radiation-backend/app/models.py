@@ -75,7 +75,8 @@ class GlobalStats(BaseModel):
 
 class HeatmapCell(BaseModel):
     geohash: str
-    location: str = ""
+    city: str = ""
+    country: str = ""
     cell_lat: float = Field(ge=-90, le=90)
     cell_lon: float = Field(ge=-180, le=180)
     avg_cpm: float
