@@ -18,7 +18,7 @@ const DEFAULT_CONFIG = {
   threshold: 100,
   timespan: 1,
   bbox: null,
-  speed: 1,
+  speed: .001,
 };
 
 export default function App() {

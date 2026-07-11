@@ -37,7 +37,7 @@ const SPEED_STEPS = [
   { label: "Realtime",           value: 1      },
   { label: "Medium",             value: 0.001  },
   { label: "Fast",               value: 0.0001 },
-  { label: "Firehose (fastest)", value: 0      },
+  { label: "Fastest",            value: 0      },
 ];
 
 function initialSpeedIndex(speed) {
@@ -66,6 +66,7 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, tim
     onChange(next);
   }
 
+  // threshold: visual only on drag, API on release
   function dragThreshold(value) {
     setDraft((current) => ({ ...current, threshold: value }));
   }
@@ -82,12 +83,15 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, tim
     }
   }
 
-  async function chooseSpeed(index) {
+  // speed: visual only on drag, API on release
+  function dragSpeed(index) {
     setSpeedIndex(index);
-    const value = SPEED_STEPS[index].value;
-    const next = { ...draft, speed: value };
-    setDraft(next);
-    onChange(next);
+    setDraft((current) => ({ ...current, speed: SPEED_STEPS[index].value }));
+  }
+
+  async function commitSpeed() {
+    const value = SPEED_STEPS[speedIndex].value;
+    onChange({ ...draft, speed: value });
     setSavingSpeed(true);
     try {
       await postSpeed(value);
@@ -147,12 +151,14 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, tim
             max={SPEED_STEPS.length - 1}
             step={1}
             value={speedIndex}
-            onChange={(e) => chooseSpeed(Number(e.target.value))}
+            onChange={(e) => dragSpeed(Number(e.target.value))}
+            onMouseUp={commitSpeed}
+            onTouchEnd={commitSpeed}
             onMouseDown={(e) => e.stopPropagation()}
           />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 4 }}>
             <span>Realtime</span>
-            <span>Firehose</span>
+            <span>Fastest</span>
           </div>
         </div>
 
@@ -171,6 +177,7 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, tim
         </div>
 
         <TrendChart timeseries={timeseries} hours={draft.timespan} />
+
         <button
           className={`rc-btn rc-heat${showHeat ? " on" : ""}`}
           type="button"
