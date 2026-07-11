@@ -1,5 +1,6 @@
 # app/db.py
 import logging
+from datetime import datetime, timezone
 
 import asyncpg
 
@@ -73,52 +74,67 @@ async def get_sensor_history(sensor_key: str, hours: int = 24) -> list[dict]:
         return []
     rows = await pool.fetch(
         """
-        SELECT captured_at, cpm, level, latitude, longitude, city, country
+        SELECT captured_at, ingested_at, cpm, level, latitude, longitude, city, country
         FROM readings
         WHERE sensor_key = $1
-          AND captured_at > NOW() - MAKE_INTERVAL(hours => $2)
-        ORDER BY captured_at ASC
+          AND ingested_at > NOW() - MAKE_INTERVAL(hours => $2)
+        ORDER BY ingested_at ASC
         """,
         sensor_key, hours,
     )
-    return [dict(row) for row in rows]
+    return [
+        {**dict(row), "captured_at": row["captured_at"].isoformat(),
+                      "ingested_at": row["ingested_at"].isoformat()}
+        for row in rows
+    ]
 
 
-async def get_timeseries(days: int = 7, interval: str = "1 hour") -> list[dict]:
-    """Average and max cpm grouped by time bucket, for the last N days."""
+async def get_timeseries(hours: int = 1, interval: str = "1 minute") -> list[dict]:
+    """Average and max cpm grouped by time bucket, for the last N hours."""
     if not pool:
         return []
     rows = await pool.fetch(
         f"""
         SELECT
-            time_bucket(INTERVAL '{interval}', captured_at) AS bucket,
-            AVG(cpm)   AS avg_cpm,
-            MAX(cpm)   AS max_cpm,
-            COUNT(*)   AS reading_count
+            time_bucket(INTERVAL '{interval}', ingested_at) AS bucket,
+            AVG(cpm)::float   AS avg_cpm,
+            MAX(cpm)::float   AS max_cpm,
+            COUNT(*)          AS reading_count  
         FROM readings
-        WHERE captured_at > NOW() - MAKE_INTERVAL(days => $1)
+        WHERE ingested_at > NOW() - MAKE_INTERVAL(hours => $1)
         GROUP BY bucket
         ORDER BY bucket ASC
         """,
-        days,
+        hours,
     )
-    return [dict(row) for row in rows]
+    return [
+        {
+            "bucket": row["bucket"].isoformat(),
+            "avg_cpm": row["avg_cpm"],
+            "max_cpm": row["max_cpm"],
+            "reading_count": row["reading_count"],
+        }
+        for row in rows
+    ]
 
-
-async def get_alert_history(days: int = 30) -> list[dict]:
+async def get_alert_history(hours: int = 1) -> list[dict]:
     if not pool:
         return []
     rows = await pool.fetch(
         """
-        SELECT captured_at, sensor_key, city, country,
-               latitude, longitude, cpm, level, alert_text
+        SELECT captured_at, ingested_at, sensor_key, city, country,
+               latitude, longitude, cpm, level, alert_text  
         FROM alerts
-        WHERE captured_at > NOW() - MAKE_INTERVAL(days => $1)
-        ORDER BY captured_at DESC
+        WHERE ingested_at > NOW() - MAKE_INTERVAL(hours => $1) 
+        ORDER BY ingested_at DESC
         """,
-        days,
+        hours,  
     )
-    return [dict(row) for row in rows]
+    return [
+        {**dict(row), "captured_at": row["captured_at"].isoformat(),
+                      "ingested_at": row["ingested_at"].isoformat()}
+        for row in rows
+    ]
 
 
 async def get_all_sensors() -> list[dict]:
@@ -129,9 +145,13 @@ async def get_all_sensors() -> list[dict]:
         """
         SELECT DISTINCT ON (sensor_key)
                sensor_key, city, country,
-               latitude, longitude, cpm, level, captured_at
-        FROM readings
-        ORDER BY sensor_key, captured_at DESC
+               latitude, longitude, cpm, level, captured_at, ingested_at
+        FROM readings  
+        ORDER BY sensor_key, ingested_at DESC
         """
     )
-    return [dict(row) for row in rows]
+    return [
+        {**dict(row), "captured_at": row["captured_at"].isoformat(),
+                      "ingested_at": row["ingested_at"].isoformat()} 
+        for row in rows
+    ]

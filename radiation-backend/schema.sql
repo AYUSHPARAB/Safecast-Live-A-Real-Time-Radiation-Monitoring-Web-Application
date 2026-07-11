@@ -6,6 +6,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 
 CREATE TABLE IF NOT EXISTS readings (
     captured_at  TIMESTAMPTZ      NOT NULL,
+    ingested_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sensor_key   TEXT             NOT NULL,
     city         TEXT             DEFAULT '',
     country      TEXT             DEFAULT '',
@@ -19,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_readings_sensor ON readings (sensor_key, captured
 
 CREATE TABLE IF NOT EXISTS alerts (
     captured_at  TIMESTAMPTZ      NOT NULL,
+    ingested_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sensor_key   TEXT             NOT NULL,
     city         TEXT             DEFAULT '',
     country      TEXT             DEFAULT '',
