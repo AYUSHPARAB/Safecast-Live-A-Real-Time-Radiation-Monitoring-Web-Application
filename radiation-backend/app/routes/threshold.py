@@ -5,7 +5,7 @@ from ..cache import cache
 
 router = APIRouter(prefix="/api", tags=["threshold"])
 
-THRESHOLD_KEY = "config:threshold"
+THRESHOLD_KEY = "threshold"
 
 
 class ThresholdUpdate(BaseModel):

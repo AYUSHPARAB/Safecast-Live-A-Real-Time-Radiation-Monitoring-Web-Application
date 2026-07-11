@@ -76,16 +76,19 @@ export function getSensorHistory(sensorKey, hours = 24) {
   );
 }
 
-export function getIngestionSpeed() {
-  return apiRequest("/api/config/speed");
+export function postThreshold(threshold) {
+  return request("/api/config/threshold", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threshold }),
+  });
 }
 
-export function setIngestionSpeed(multiplier) {
-  return apiRequest("/api/config/speed", {
+export function postSpeed(multiplier) {
+  return request("/api/config/speed", {
     method: "POST",
-    body: JSON.stringify({
-      multiplier: Number(multiplier),
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ multiplier }),
   });
 }
 
