@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { COLORS } from "../constants.js";
+import "leaflet.heat";
 
 const DEFAULT_CENTER = [20, 10];
 const DEFAULT_ZOOM = 2;
@@ -16,6 +17,7 @@ export function useLeafletMap(containerId) {
   const mapRef = useRef(null);
   const sensorLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
+  const heatCellsRef = useRef(new Map());
   const markersRef = useRef(new Map());
   const markerOrderRef = useRef([]);
   const spikeTimersRef = useRef(new Set());
@@ -35,7 +37,12 @@ export function useLeafletMap(containerId) {
     }).addTo(map);
 
     sensorLayerRef.current = L.layerGroup().addTo(map);
-    heatLayerRef.current = L.layerGroup();
+    heatLayerRef.current = L.heatLayer([], {
+      radius: 35,
+      blur: 25,
+      maxZoom: 10,
+      gradient: { 0.0:"#38f2a0", 0.4:"#ffb547", 0.7:"#ff7a3c", 1.0:"#ff3b4e" },
+    }).addTo(map);
     mapRef.current = map;
 
     const markers = markersRef.current;
@@ -55,6 +62,9 @@ export function useLeafletMap(containerId) {
   const renderSensor = useCallback((reading) => {
     const layer = sensorLayerRef.current;
     if (!layer || !reading?.sensor_key) return;
+
+    const el = document.querySelector(".rc-map-empty");   
+    if (el) el.style.display = "none";
 
     const color = COLORS[reading.level] || COLORS.safe;
     const radius = 4 + Math.min(8, reading.cpm / 60);
@@ -98,24 +108,32 @@ export function useLeafletMap(containerId) {
     setMarkerTotal(markersRef.current.size);
   }, [renderSensor]);
 
-  const renderHeatmap = useCallback((cells) => {
+  const redrawHeat = useCallback(() => {
     const layer = heatLayerRef.current;
     if (!layer) return;
-
-    layer.clearLayers();
-    cells.forEach((cell) => {
-      const color = COLORS[cell.level] || COLORS.safe;
-      L.circleMarker([cell.cell_lat, cell.cell_lon], {
-        radius: 10 + Math.min(20, cell.count / 10),
-        color,
-        fillColor: color,
-        fillOpacity: 0.25,
-        weight: 0,
-      })
-        .bindTooltip(`${cell.location || "Cluster"}<br>avg ${cell.avg_cpm} · max ${cell.max_cpm} · n=${cell.count}`)
-        .addTo(layer);
+    const pts = [];
+    heatCellsRef.current.forEach((cell) => {
+      const intensity = Math.min(1, (cell.max_cpm || cell.avg_cpm || 0) / 300);
+      pts.push([cell.cell_lat, cell.cell_lon, intensity]);
     });
+    layer.setLatLngs(pts);
   }, []);
+
+  // live single cell (channel="heatmap", data = one cell)
+  const renderHeatmapCell = useCallback((cell) => {
+    if (!cell?.geohash) return;
+    heatCellsRef.current.set(cell.geohash, cell);
+    redrawHeat();
+  }, [redrawHeat]);
+
+  // bulk snapshot (channel="heatmap", data.cells = array)
+  const renderHeatmap = useCallback((cells) => {
+    if (!Array.isArray(cells)) return;
+    cells.forEach((c) => {
+      if (c?.geohash) heatCellsRef.current.set(c.geohash, c);
+    });
+    redrawHeat();
+  }, [redrawHeat]);
 
   const pulseSpike = useCallback((reading) => {
     const map = mapRef.current;
@@ -169,6 +187,7 @@ export function useLeafletMap(containerId) {
     renderSensor,
     pulseSpike,
     renderHeatmap,
+    renderHeatmapCell,
     flyTo,
     markerCount,
     fitBox,

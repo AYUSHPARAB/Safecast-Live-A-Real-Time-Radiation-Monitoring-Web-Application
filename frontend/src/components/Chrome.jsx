@@ -1,16 +1,16 @@
 import { COLORS } from "../constants.js";
 
 const LEVELS = [
-  ["safe", "< 50"],
-  ["warning", "50–99"],
-  ["elevated", "100–299"],
-  ["high", "≥ 300"],
+  ["safe"],
+  ["warning"],
+  ["elevated"],
+  ["high"],
 ];
 
 export function Legend() {
   return (
     <div className="rc-legend rc-mono">
-      <div className="rc-legend-head">LEVEL · CPM</div>
+      <div className="rc-legend-head">LEVEL</div>
       {LEVELS.map(([level, range]) => (
         <div className="rc-li" key={level}>
           <span className="rc-lvl" style={{ background: COLORS[level] }} />
