@@ -22,7 +22,6 @@ export function useLeafletMap(containerId) {
   const markerOrderRef = useRef([]);
   const spikeTimersRef = useRef(new Set());
   const [markerTotal, setMarkerTotal] = useState(0);
-  const [totalReceived, setTotalReceived] = useState(0);
 
   useEffect(() => {
     const map = L.map(containerId, {
@@ -63,7 +62,6 @@ export function useLeafletMap(containerId) {
   const renderSensor = useCallback((reading) => {
     const layer = sensorLayerRef.current;
     if (!layer || !reading?.sensor_key) return;
-    setTotalReceived((count) => count + 1);
 
     const el = document.querySelector(".rc-map-empty");   
     if (el) el.style.display = "none";
@@ -106,7 +104,6 @@ export function useLeafletMap(containerId) {
     layer.clearLayers();
     markersRef.current.clear();
     markerOrderRef.current = [];
-    setTotalReceived(0);
     readings.forEach(renderSensor);
     setMarkerTotal(markersRef.current.size);
   }, [renderSensor]);
@@ -184,7 +181,6 @@ export function useLeafletMap(containerId) {
   }, []);
 
   const markerCount = useCallback(() => markerTotal, [markerTotal]);
-    const receivedCount = useCallback(() => totalReceived, [totalReceived]);
 
   return {
     renderSnapshot,
@@ -194,7 +190,6 @@ export function useLeafletMap(containerId) {
     renderHeatmapCell,
     flyTo,
     markerCount,
-    receivedCount,
     fitBox,
     resetView,
     toggleHeatmap,

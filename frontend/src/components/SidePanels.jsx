@@ -96,9 +96,9 @@ export function AlertsFeed({ alerts }) {
 export function TopHotspots({ hotspots, onSelect }) {
   return (
     <section className="rc-sec">
-      <div className="rc-eyebrow">Top hotspots <span>{Math.min(hotspots.length, 5)}</span></div>
+      <div className="rc-eyebrow">Top hotspots <span>{hotspots.length}</span></div>
       <div className="rc-feed">
-        {hotspots.length === 0 ? <EmptyFeed message="No hotspot data available." /> : hotspots.slice(0, 5).map((hotspot) => (
+        {hotspots.length === 0 ? <EmptyFeed message="No hotspot data available." /> : hotspots.map((hotspot) => (
           <FeedRow key={hotspot.rank} rank={hotspot.rank} level={hotspot.level}
             primary={hotspot.location}
             secondary={`avg ${hotspot.avg_cpm} · n=${hotspot.count}`}

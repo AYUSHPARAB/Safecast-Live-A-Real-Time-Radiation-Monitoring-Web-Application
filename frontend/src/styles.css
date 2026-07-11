@@ -353,17 +353,6 @@ select {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 280px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.rc-feed::-webkit-scrollbar {
-  width: 6px;
-}
-.rc-feed::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
 }
 
 .rc-row {

@@ -81,23 +81,7 @@ export default function App() {
       active = false;
     };
   }, []);
-  // Poll for top hotspots every 15 seconds
-  useEffect(() => {
-    const POLL_MS = 15000; 
 
-    const id = setInterval(() => {
-      getTopHotspots()
-        .then((result) => {
-          if (Array.isArray(result?.hotspots)) {
-            setHotspots(result.hotspots);
-          }
-        })
-        .catch(() => {
-        });
-    }, POLL_MS);
-
-    return () => clearInterval(id);
-  }, []);
 
   const onMessage = useCallback((msg) => {
     console.log("WS message:", msg.channel, msg.data); 
@@ -218,7 +202,7 @@ export default function App() {
 
         <aside className="rc-rail right">
           {/* StatsPanel — passing the stats object and marker count */}
-          <StatsPanel stats={stats} timeseries={timeseries} onMap={map.receivedCount()} />
+          <StatsPanel stats={stats} timeseries={timeseries} onMap={map.markerCount()} />
 
           {/* pass the live arrays */}
           <AlertsFeed alerts={alerts} />
