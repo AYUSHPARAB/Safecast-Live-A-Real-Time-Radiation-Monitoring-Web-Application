@@ -1,10 +1,18 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Header from "./components/Header.jsx";
 import ConfigPanel from "./components/ConfigPanel.jsx";
 import { Legend, Ticker } from "./components/Chrome.jsx";
 import { AlertsFeed, SpikesFeed, StatsPanel, TopHotspots } from "./components/SidePanels.jsx";
 import { useLeafletMap } from "./lib/useLeafletMap.js";
 import { useLiveStream } from "./lib/useLiveStream.js";
+import {
+  getAlerts,
+  getCurrentStats,
+  getHealth,
+  getSpikes,
+  getStatsTimeseries,
+  getTopHotspots,
+} from "./services/api.js";
 
 const DEFAULT_CONFIG = {
   threshold: 100,
@@ -12,6 +20,22 @@ const DEFAULT_CONFIG = {
   bbox: null,
   speed: 1,
 };
+
+let initialSnapshotsPromise;
+
+function loadInitialSnapshots() {
+  if (!initialSnapshotsPromise) {
+    initialSnapshotsPromise = Promise.allSettled([
+      getHealth(),
+      getCurrentStats(),
+      getStatsTimeseries({ days: 1, interval: "1 hour" }),
+      getAlerts(20),
+      getSpikes(50),
+      getTopHotspots(),
+    ]);
+  }
+  return initialSnapshotsPromise;
+}
 
 export default function App() {
   const map = useLeafletMap("rc-map");
@@ -26,8 +50,37 @@ export default function App() {
   const [spikes,    setSpikes]    = useState([]);        
   const [hotspots,  setHotspots]  = useState([]);         
   const [tickItems, setTickItems] = useState([]);         
+  const [timeseries, setTimeseries] = useState([]);
+  const [health, setHealth] = useState(undefined);
 
-   const lastTickRef = useRef(0);
+  const lastTickRef = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+
+    loadInitialSnapshots().then(([healthResult, statsResult, timeseriesResult, alertsResult, spikesResult, topResult]) => {
+      if (!active) return;
+
+      setHealth(healthResult.status === "fulfilled" ? healthResult.value : null);
+      if (statsResult.status === "fulfilled") setStats(statsResult.value);
+      if (timeseriesResult.status === "fulfilled" && Array.isArray(timeseriesResult.value)) {
+        setTimeseries(timeseriesResult.value);
+      }
+      if (alertsResult.status === "fulfilled" && Array.isArray(alertsResult.value)) {
+        setAlerts(alertsResult.value);
+      }
+      if (spikesResult.status === "fulfilled" && Array.isArray(spikesResult.value)) {
+        setSpikes(spikesResult.value);
+      }
+      if (topResult.status === "fulfilled" && Array.isArray(topResult.value?.hotspots)) {
+        setHotspots(topResult.value.hotspots);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
 
   const onMessage = useCallback((msg) => {
@@ -80,7 +133,7 @@ export default function App() {
       // "heatmap" 
       
       case "heatmap":
-        map.renderHeatmap(data.cells ?? []);
+        map.renderHeatmap(data.cells ?? [data]);
         break;
 
       // "top" — ranked list of highest-CPM areas
@@ -131,7 +184,7 @@ export default function App() {
   return (
     <div className="rc-root">
       {/* Header receives real status and real toggle handler */}
-      <Header status={status} onToggle={handleToggle} />
+      <Header status={status} health={health} onToggle={handleToggle} />
 
       <div className="rc-body">
         <ConfigPanel
@@ -149,7 +202,7 @@ export default function App() {
 
         <aside className="rc-rail right">
           {/* StatsPanel — passing the stats object and marker count */}
-          <StatsPanel stats={stats} onMap={map.markerCount()} />
+          <StatsPanel stats={stats} timeseries={timeseries} onMap={map.markerCount()} />
 
           {/* pass the live arrays */}
           <AlertsFeed alerts={alerts} />
@@ -166,5 +219,3 @@ export default function App() {
     </div>
   );
 }
-
-

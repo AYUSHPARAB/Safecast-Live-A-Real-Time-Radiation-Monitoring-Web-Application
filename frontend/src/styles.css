@@ -120,6 +120,30 @@ select {
   background: var(--muted);
 }
 
+.rc-conn-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--elev);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.rc-conn-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.rc-conn-btn--live {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #04252b;
+  font-weight: 600;
+}
+
 /* Side rails */
 .rc-rail {
   overflow-y: auto;
@@ -329,6 +353,70 @@ select {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.rc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--elev);
+  font-size: 12px;
+}
+
+.rc-row--click {
+  cursor: pointer;
+}
+
+.rc-row--click:hover {
+  border-color: var(--accent);
+}
+
+.rc-row-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.rc-row-rank {
+  flex: 0 0 auto;
+  width: 24px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rc-row-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rc-row-primary,
+.rc-row-secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-row-primary {
+  font-size: 12px;
+}
+
+.rc-row-secondary {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.rc-row-value {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .rc-empty {

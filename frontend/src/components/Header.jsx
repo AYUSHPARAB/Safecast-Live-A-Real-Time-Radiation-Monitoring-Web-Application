@@ -5,9 +5,16 @@ const STATUS = {
   error:        { color: "var(--high)",    label: "DISCONNECTED" },
 };
 
-export default function Header({ status, onToggle }) {
+export default function Header({ status, health, onToggle }) {
   const { color, label } = STATUS[status] || STATUS.disconnected;
   const isLive = status === "live" || status === "connecting";
+  const healthState = health === undefined
+    ? { color: "var(--muted)", label: "CHECKING API…" }
+    : health?.status === "ok" && health.redis
+      ? { color: "var(--safe)", label: "API HEALTHY" }
+      : health?.status === "ok"
+        ? { color: "var(--warning)", label: "REDIS UNAVAILABLE" }
+        : { color: "var(--high)", label: "API UNAVAILABLE" };
 
   return (
     <header className="rc-head">
@@ -38,6 +45,11 @@ export default function Header({ status, onToggle }) {
         {isLive ? "Disconnect" : "Go live"}
       </button>
 
+      <div className="rc-conn rc-mono" aria-label="Backend API health">
+        <span className="rc-dot" style={{ background: healthState.color }} />
+        {healthState.label}
+      </div>
+
       {/* Status pill */}
       <div className="rc-conn rc-mono" aria-label="Backend connection status">
         <span className="rc-dot" style={{ background: color }} />
@@ -46,6 +58,5 @@ export default function Header({ status, onToggle }) {
     </header>
   );
 }
-
 
 
