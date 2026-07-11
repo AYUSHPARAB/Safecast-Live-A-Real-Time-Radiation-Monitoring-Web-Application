@@ -7,6 +7,7 @@ import "leaflet.heat";
 const DEFAULT_CENTER = [20, 10];
 const DEFAULT_ZOOM = 2;
 const MAX_MARKERS = 2500;
+const LEVEL_INTENSITY = { safe: 0.15, warning: 0.4, elevated: 0.7, high: 1.0 };
 
 function sensorTooltip(reading) {
   const location = [reading.city, reading.country].filter(Boolean).join(", ") || reading.sensor_key;
@@ -112,15 +113,15 @@ export function useLeafletMap(containerId) {
   }, [renderSensor]);
 
   const redrawHeat = useCallback(() => {
-    const layer = heatLayerRef.current;
-    if (!layer) return;
-    const pts = [];
-    heatCellsRef.current.forEach((cell) => {
-      const intensity = Math.min(1, (cell.max_cpm || cell.avg_cpm || 0) / 300);
-      pts.push([cell.cell_lat, cell.cell_lon, intensity]);
-    });
-    layer.setLatLngs(pts);
-  }, []);
+      const layer = heatLayerRef.current;
+      if (!layer) return;
+      const pts = [];
+      heatCellsRef.current.forEach((cell) => {
+        const intensity = LEVEL_INTENSITY[cell.level] ?? 0.15;
+        pts.push([cell.cell_lat, cell.cell_lon, intensity]);
+      });
+      layer.setLatLngs(pts);
+    }, []);
 
   // live single cell (channel="heatmap", data = one cell)
   const renderHeatmapCell = useCallback((cell) => {

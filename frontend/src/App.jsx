@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Header from "./components/Header.jsx";
 import ConfigPanel from "./components/ConfigPanel.jsx";
 import { Legend, Ticker } from "./components/Chrome.jsx";
@@ -11,11 +11,12 @@ import {
   getHealth,
   getSpikes,
   getTopHotspots,
+  getStatsTimeseries,
 } from "./services/api.js";
 
 const DEFAULT_CONFIG = {
   threshold: 100,
-  timespan: 3600,
+  timespan: 1,
   bbox: null,
   speed: 1,
 };
@@ -33,6 +34,7 @@ export default function App() {
   const [hotspots,  setHotspots]  = useState([]);
   const [tickItems, setTickItems] = useState([]);
   const [health,    setHealth]    = useState(undefined);
+  const [timeseries, setTimeseries] = useState([]);
 
   const lastTickRef = useRef(0);
 
@@ -138,13 +140,27 @@ export default function App() {
     connect();
   }
 
-  // ── Config apply 
+  const loadTrend = useCallback(async (hours) => {
+    try {
+      const ts = await getStatsTimeseries(hours);
+      if (Array.isArray(ts)) setTimeseries(ts);
+    } catch (e) {
+      console.error("timeseries fetch failed", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTrend(config.timespan);
+    const id = setInterval(() => loadTrend(config.timespan), 30000);
+    return () => clearInterval(id);
+  }, [config.timespan, loadTrend]);
+
+
   function changeConfig(next) {
     setConfig(next);
-    // Map zoom 
     if (next.bbox) map.fitBox(next.bbox);
-    else           map.resetView();
-    
+    else map.resetView();
+    loadTrend(next.timespan);   
   }
 
   function toggleHeatmap() {
@@ -164,6 +180,7 @@ export default function App() {
           onChange={changeConfig}
           showHeat={showHeatmap}
           onToggleHeat={toggleHeatmap}
+          timeseries={timeseries}
         />
 
         <main className="rc-map-wrap" aria-label="Radiation sensor map">
@@ -174,7 +191,7 @@ export default function App() {
 
         <aside className="rc-rail right">
           
-          <StatsPanel stats={stats} alertsCount={alerts.length} onMap={map.markerCount()} />
+          <StatsPanel stats={stats} timeseries={timeseries} alertsCount={alerts.length} onMap={map.markerCount()} />
 
           
           <AlertsFeed alerts={alerts} />

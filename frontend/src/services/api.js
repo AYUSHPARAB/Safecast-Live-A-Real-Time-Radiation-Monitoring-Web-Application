@@ -37,17 +37,8 @@ export function getCurrentStats({ signal } = {}) {
   return apiRequest("/api/stats/current", { signal });
 }
 
-export function getStatsTimeseries({
-  days = 1,
-  interval = "1 hour",
-  signal,
-} = {}) {
-  const params = new URLSearchParams({
-    days: String(days),
-    interval,
-  });
-
-  return apiRequest(`/api/stats/timeseries?${params.toString()}`, { signal });
+export function getStatsTimeseries(hours = 1, { signal } = {}) {
+  return apiRequest(`/api/stats/timeseries?hours=${hours}`, { signal });
 }
 
 export function getAlerts(limit = 20) {

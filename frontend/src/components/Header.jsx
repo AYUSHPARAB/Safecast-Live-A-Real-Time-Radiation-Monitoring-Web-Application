@@ -8,14 +8,7 @@ const STATUS = {
 export default function Header({ status, health, onToggle }) {
   const { color, label } = STATUS[status] || STATUS.disconnected;
   const isLive = status === "live" || status === "connecting";
-  const healthState = health === undefined
-    ? { color: "var(--muted)", label: "CHECKING API…" }
-    : health?.status === "ok" && health.redis
-      ? { color: "var(--safe)", label: "API HEALTHY" }
-      : health?.status === "ok"
-        ? { color: "var(--warning)", label: "REDIS UNAVAILABLE" }
-        : { color: "var(--high)", label: "API UNAVAILABLE" };
-
+  
   return (
     <header className="rc-head">
       <div className="rc-logo">
@@ -37,6 +30,16 @@ export default function Header({ status, health, onToggle }) {
 
       {/* Go live / Disconnect button */}
       <button
+        className="rc-conn-btn"
+        type="button"
+        onClick={() => window.open("localhost:5173/replay.html", "_blank")}
+        style={{ marginRight: 10 }}
+      >
+        ▶️ Replay
+      </button>
+
+      {/* Go live / Disconnect button */}
+      <button
         className={`rc-conn-btn${isLive ? " rc-conn-btn--live" : ""}`}
         type="button"
         onClick={onToggle}
@@ -44,12 +47,7 @@ export default function Header({ status, health, onToggle }) {
       >
         {isLive ? "Disconnect" : "Go live"}
       </button>
-
-      <div className="rc-conn rc-mono" aria-label="Backend API health">
-        <span className="rc-dot" style={{ background: healthState.color }} />
-        {healthState.label}
-      </div>
-
+     
       {/* Status pill */}
       <div className="rc-conn rc-mono" aria-label="Backend connection status">
         <span className="rc-dot" style={{ background: color }} />

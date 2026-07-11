@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { postThreshold, postSpeed } from "../services/api.js";
+import TrendChart from "./TrendChart.jsx";
 
 const AREAS = [
   { label: "World (no filter)", bbox: null },
@@ -44,7 +45,7 @@ function initialSpeedIndex(speed) {
   return i !== -1 ? i : 1;
 }
 
-export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat }) {
+export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, timeseries }) {
   const [draft, setDraft] = useState(cfg);
   const [area, setArea] = useState(AREAS[0].label);
   const [speedIndex, setSpeedIndex] = useState(() => initialSpeedIndex(cfg.speed));
@@ -122,21 +123,6 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat }) {
         </div>
 
         <div className="rc-field">
-          <label className="rc-flabel" htmlFor="timespan">Timespan of displayed data</label>
-          <select
-            id="timespan"
-            value={draft.timespan}
-            onChange={(e) => updateTimespan(Number(e.target.value))}
-          >
-            <option value={300}>Last 5 minutes</option>
-            <option value={900}>Last 15 minutes</option>
-            <option value={3600}>Last hour</option>
-            <option value={21600}>Last 6 hours</option>
-            <option value={86400}>Last 24 hours</option>
-          </select>
-        </div>
-
-        <div className="rc-field">
           <label className="rc-flabel" htmlFor="area">Display area</label>
           <select
             id="area"
@@ -170,6 +156,21 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat }) {
           </div>
         </div>
 
+        <div className="rc-field">
+          <label className="rc-flabel" htmlFor="timespan">Timespan of displayed data</label>
+          <select
+            id="timespan"
+            value={draft.timespan}
+            onChange={(e) => updateTimespan(Number(e.target.value))}
+          >
+            <option value={1}>Last hour</option>
+            <option value={6}>Last 6 hours</option>
+            <option value={12}>Last 12 hours</option>
+            <option value={24}>Last 24 hours</option>
+          </select>
+        </div>
+
+        <TrendChart timeseries={timeseries} hours={draft.timespan} />
         <button
           className={`rc-btn rc-heat${showHeat ? " on" : ""}`}
           type="button"

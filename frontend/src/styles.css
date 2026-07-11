@@ -581,3 +581,6 @@ select {
   70%  { box-shadow: 0 0 0 8px rgba(63, 185, 80, 0);   }
   100% { box-shadow: 0 0 0 0   rgba(63, 185, 80, 0);   }
 }
+
+.rc-trend { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line, #25312f); }
+.rc-trend-empty { font-size: 11px; color: #7c8f8a; padding: 20px 4px; text-align: center; }
