@@ -8,6 +8,11 @@ function levelOf(cpm) {
 }
 
 function Sparkline({ timeseries, color }) {
+  console.log("[Sparkline] timeseries:", timeseries);
+  if (!timeseries || timeseries.length < 2) {
+    return <div className="rc-spark rc-spark-empty">No trend data</div>;
+  }
+
   const values = timeseries.map((point) => point.avg_cpm).filter(Number.isFinite);
   if (values.length < 2) {
     return <div className="rc-spark rc-spark-empty">No trend data</div>;
