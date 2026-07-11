@@ -174,7 +174,7 @@ export default function App() {
 
         <aside className="rc-rail right">
           
-          <StatsPanel stats={stats} timeseries={timeseries} onMap={map.receivedCount()} />
+          <StatsPanel stats={stats} onMap={map.receivedCount()} />
 
           
           <AlertsFeed alerts={alerts} />
