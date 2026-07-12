@@ -323,30 +323,39 @@ select {
   font-size: 10px;
 }
 
-.rc-statgrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+.rc-stat {
+  background: #1b2430;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  padding: 18px;
+  min-height: 95px;
+
+  transition: transform .2s ease, border-color .2s ease;
 }
 
-.rc-stat {
-  padding: 9px 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--elev);
+.rc-stat:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,.12);
 }
 
 .rc-stat .v {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #fff;
 }
 
 .rc-stat .l {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  margin-top: 6px;
+  font-size: .75rem;
+  letter-spacing: 2px;
   text-transform: uppercase;
+  color: #9aa4b2;
 }
 
 .rc-feed {

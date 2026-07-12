@@ -35,7 +35,7 @@ export default function Header({ status, health, onToggle }) {
         onClick={() => window.open("/replay.html", "_blank")}
         style={{ marginRight: 10 }}
       >
-        ▶️ Replay
+        Replay
       </button>
 
       {/* Go live / Disconnect button */}
