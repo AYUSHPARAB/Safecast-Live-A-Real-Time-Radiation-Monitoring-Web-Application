@@ -7,15 +7,16 @@ function levelOf(cpm) {
   return "safe";
 }
 
-function Sparkline({ timeseries, color }) {
-  console.log("[Sparkline] timeseries:", timeseries);
-  if (!timeseries || timeseries.length < 2) {
-    return <div className="rc-spark rc-spark-empty">No trend data</div>;
+function Sparkline({ data, color }) {
+  if (!data || data.length < 2) {
+    return <div className="rc-spark rc-spark-empty">Collecting live data…</div>;
   }
 
-  const values = timeseries.map((point) => point.avg_cpm).filter(Number.isFinite);
+  const values = data
+    .map((point) => (point.avg ?? point.avg_cpm))
+    .filter(Number.isFinite);
   if (values.length < 2) {
-    return <div className="rc-spark rc-spark-empty">No trend data</div>;
+    return <div className="rc-spark rc-spark-empty">Collecting live data…</div>;
   }
 
   const width = 268;
@@ -37,7 +38,7 @@ function Sparkline({ timeseries, color }) {
   );
 }
 
-export function StatsPanel({ stats, timeseries, alertsCount, onMap }) {
+export function StatsPanel({ stats, liveTrend, alertsCount, onMap }) {
   const average = stats?.avg_cpm ?? null;
   const color = average === null ? "var(--muted)" : COLORS[levelOf(average)];
 
@@ -50,7 +51,7 @@ export function StatsPanel({ stats, timeseries, alertsCount, onMap }) {
         </div>
         <div className="unit">AVG CPM</div>
       </div>
-      <Sparkline timeseries={timeseries} color={color} />
+      <Sparkline data={liveTrend} color={color} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

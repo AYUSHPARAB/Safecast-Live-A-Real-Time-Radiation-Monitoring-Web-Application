@@ -44,7 +44,7 @@ class Cache:
         await self.r.set(
             HEAT_PREFIX + cell.geohash,
             json.dumps(cell.model_dump(mode="json")),
-            ex=settings.sensor_ttl_seconds,
+            ex=settings.heat_ttl_seconds,
         )
 
     async def put_spike(self, spike: RadiationSpike) -> None:

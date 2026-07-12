@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:password@localhost:5432/radiation"
     redis_url: str = "redis://redis:6379/0"
     sensor_ttl_seconds: int = 3600
+    heat_ttl_seconds: int = 300
 
     kafka_bootstrap: str = "kafka:9092"
     kafka_group: str = "backend"

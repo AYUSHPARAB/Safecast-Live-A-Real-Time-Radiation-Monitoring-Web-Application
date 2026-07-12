@@ -46,7 +46,7 @@ export function Ticker({ items, status }) {
         STREAM
       </span>
 
-      {/* ADD this wrapper div */}
+      
       <div className="rc-ticker-track">
         {items.length === 0 ? (
           <span className="rc-tick-item" style={{ color: "var(--muted)" }}>

@@ -25,7 +25,6 @@ export default function App() {
   const map = useLeafletMap("rc-map");
 
   const [config,      setConfig]      = useState(DEFAULT_CONFIG);
-  // const [showHeatmap, setShowHeatmap] = useState(true);
 
   // ── Live data state 
   const [stats,     setStats]     = useState(null);
@@ -35,7 +34,7 @@ export default function App() {
   const [tickItems, setTickItems] = useState([]);
   const [health,    setHealth]    = useState(undefined);
   const [timeseries, setTimeseries] = useState([]);
-
+  const [liveTrend, setLiveTrend] = useState([]);
   
 
   const onMessage = useCallback((msg) => {
@@ -70,8 +69,10 @@ export default function App() {
         break;
 
       case "stats":
-        
         setStats(data);
+        setLiveTrend(prev =>
+          [...prev, { t: Date.now(), avg: Math.round(data.avg_cpm) }].slice(-30)
+        );
         break;
 
       case "heatmap":
@@ -165,13 +166,6 @@ export default function App() {
     loadTrend(next.timespan);   
   }
 
-  // function toggleHeatmap() {
-  //   setShowHeatmap((visible) => {
-  //     map.toggleHeatmap(!visible);
-  //     return !visible;
-  //   });
-  // }
-
   return (
     <div className="rc-root">
       <Header status={status} health={health} onToggle={handleToggle} />
@@ -191,7 +185,7 @@ export default function App() {
 
         <aside className="rc-rail right">
           
-          <StatsPanel stats={stats} timeseries={timeseries} alertsCount={alerts.length} onMap={map.markerCount()} />
+          <StatsPanel stats={stats} liveTrend={liveTrend} alertsCount={alerts.length} onMap={map.markerCount()} />
 
           
           <AlertsFeed alerts={alerts} />
