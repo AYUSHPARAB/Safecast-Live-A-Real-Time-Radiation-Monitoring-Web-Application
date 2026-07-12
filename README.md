@@ -1,93 +1,249 @@
-# BD26_Project_T5_C
+# Safecast Live — Real-Time Radiation Tracking
 
+**BD26 · Team T5 · Topic C** — Institute for Data Engineering, TUHH
 
+A stream-processing pipeline that replays the [Safecast](https://safecast.org/data/download/) radiation data through **Apache Kafka**, analyses it with **Apache Flink**, and displays it live on a world map.
 
-## Getting started
+**Live demo:** `http://<AZURE_PUBLIC_IP>:5173` <!-- TODO: paste public URL -->
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+---
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Features
 
-## Add your files
+- **Live world map** — one marker per sensor location; fixed sensors are replaced, not appended, so the map never grows unbounded.
+- **Colour-coded levels** — `safe` / `warning` / `elevated` / `high`.
+- **User-configurable threshold** — change the critical CPM value from the UI; implemented inside Flink at runtime.
+- **Configurable ingestion speed** — speed up or slow down the data ingestion from kafka.
+- **Alerts** — Any reading above the threshold produces an alert.
+- **Heatmap** — readings aggregated into geohash cells (data blobs).
+- **Top-N hotspots** — the most dangerous cells worldwide are ranked every 30 seconds.
+- **spike detection** — A sudden jump relative to a sensor's own moving average is flagged as a spike.
+- **global statistics** — rolling 30-second window produce global count, average and maximum cpm.
+- **Area filter** — The map can be restricted to a region (World, Fukushima, Europe, Japan....) so fewer data items are displayed.
+- **time-window replay** — A separate replay page fetches a historical time window and animates it with play/pause, speed and a timeline scrubber.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+All data processing happens in Flink. The backend only caches, persists and forwards; the frontend only renders.
+
+---
+
+## Architecture
 
 ```
-cd existing_repo
-git remote add origin https://collaborating.tuhh.de/e-19/teaching/bd26_project_t5_c.git
-git branch -M main
-git push -uf origin main
+Safecast CSV → Producer → Kafka → Flink → Backend (FastAPI) → Frontend (React + Leaflet)
+                                            ├── Redis        (live state, config)
+                                            └── TimescaleDB  (history)
 ```
 
-## Integrate with your tools
+| Service          | Port     | Purpose          |
+| ---------------- | -------- | ---------------- |
+| frontend         | **5173** | Dashboard        |
+| backend          | **8000** | REST + WebSocket |
+| flink-jobmanager | **8081** | Flink dashboard  |
+| kafka-ui         | **8080** | Browse topics    |
+| kafka            | **9092** | Broker           |
+| redis            | **6379** | Live Cache       |
+| timescaledb      | **5432** | Browse topics    |
+| Infrastructure   |
 
-* [Set up project integrations](https://collaborating.tuhh.de/e-19/teaching/bd26_project_t5_c/-/settings/integrations)
+**Kafka topics:** radiation data -> `radiation-raw` (producer) → Flink → `radiation-clean`, `radiation-current`, `radiation-alerts`, `radiation-stats`, `radiation-spikes`, `radiation-heatmap`, `radiation-top`;
 
-## Collaborate with your team
+**Flink operators** (`flink-job/flink_job.py`): parse → filter invalid/empty readings → event-time watermarks → enrich (level, sensor key, city/country), then:
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+| Operator                                        | Output topic        |
+| ----------------------------------------------- | ------------------- |
+| `LatestPerSensor` — newest reading per location | `radiation-current` |
+| `AlertDedup` — threshold breach, de-duplicated  | `radiation-alerts`  |
+| `GlobalStatsAggregate` — 30 s tumbling window   | `radiation-stats`   |
+| `SpikeDetector` — sudden jumps                  | `radiation-spikes`  |
+| `HeatmapAggregate` — geohash cells, 30 s window | `radiation-heatmap` |
+| `TopNHotspots` — worst N cells, 30 s window     | `radiation-top`     |
 
-## Test and Deploy
+---
 
-Use the built-in continuous integration in GitLab.
+## Quick Start
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+**Requirements:** Docker ≥ 24, Docker Compose v2, ~8 GB free RAM.
 
-***
+**1. Get the dataset.** Download the measurements archive from <https://safecast.org/data/download/> and place the CSV (original header intact) at:
 
-# Editing this README
+```
+data/measurements-out.csv
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+**2. Run:**
 
-## Suggestions for a good README
+```bash
+git clone https://collaborating.tuhh.de/e-19/teaching/bd26_project_t5_c.git
+cd bd26_project_t5_c
+docker compose up --build
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+**3. Open <http://localhost:5173>.**
 
-## Name
-Choose a self-explaining name for your project.
+Stop with `docker compose down` (add `-v` to wipe the database).
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+---
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Testing
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```bash
+docker compose ps                       # all services up
+curl http://localhost:8000/api/health   # {"status":"ok","redis":true}
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+1. **Kafka** — <http://localhost:8080>: `radiation-raw` and `radiation-clean` message counts are climbing.
+2. **Flink** — <http://localhost:8081>: the job is `RUNNING` with non-zero records sent.
+3. **Map** — <http://localhost:5173>: markers, alerts and hotspots appear; stats refresh every 30 s.
+4. **Threshold** — lower it in the config panel; markers change colour and new alerts appear within seconds.
+5. **Speed** — raise it in the config panel; `docker compose logs -f producer` shows `SPEED CHANGED` and a higher message rate.
+6. **Replay** — open the replay page, pick a time window, press play.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+---
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## Configuration
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Set from the UI at runtime, no restart:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+| Control                  | Effect                                                              |
+| ------------------------ | ------------------------------------------------------------------- |
+| Critical threshold (CPM) | Redefines the severity levels and alerts — applied in Flink         |
+| Ingestion speed          | `1.0` = real time, `0.001` = medium, `0.0001` = fast, `0` = fastest |
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+Key environment variables (`docker-compose.yml`):
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+| Variable                       | Default                     | Purpose                              |
+| ------------------------------ | --------------------------- | ------------------------------------ |
+| `SPEED_MULTIPLIER`             | `0.001`                     | Producer starting speed              |
+| `MAX_ROWS`                     | `0`                         | Stop the producer after N rows       |
+| `ALERT_THRESHOLD`              | `100`                       | Flink fallback threshold             |
+| `TOP_N` / `GEOHASH_PRECISION`  | `10` / `5`                  | Hotspot count, heatmap cell size     |
+| `BACKEND_CORS_ORIGINS`         | `["http://localhost:5173"]` | Must include the frontend origin     |
+| `VITE_API_URL` / `VITE_WS_URL` | `localhost:8000`            | Backend URLs baked into the frontend |
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+---
 
-## License
-For open source projects, say how it is licensed.
+## API
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Swagger(Documentation): <http://localhost:8000/docs>
+
+| Endpoint                                                           | Description                                                                   |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /api/points`                                                  | Current sensors                                                               |
+| `GET /api/stats/current`, `/api/alerts`, `/api/spikes`, `/api/top` | Live state                                                                    |
+| `GET /api/points/history?start=&end=`                              | Readings in a time window (replay)                                            |
+| `GET /api/stats/timeseries?hours=`                                 | Avg/max CPM over time                                                         |
+| `POST /api/config/threshold`                                       | `{"threshold": 100.0}`                                                        |
+| `POST /api/config/speed`                                           | `{"multiplier": 0.01}`                                                        |
+| `WebSocket /ws`                                                    | Snapshot on connect, then live updates: `{ "channel": "map", "data": {...} }` |
+
+---
+
+## Cloud Deployment (AWS)
+
+# Cloud Deployment (AWS)
+
+Ubuntu 24.04 EC2 instance (**t3.2xlarge**, 8 vCPU / 32 GiB RAM, 60 GiB storage), region **eu-north-1 (Stockholm)**.
+Open ports **22, 5173, 8000** (and 8080/8081 for the demo — Kafka UI and Flink dashboard).
+
+**Public URL:** http://13.63.169.164:5173
+
+```bash
+# On a fresh Ubuntu EC2 instance:
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER && newgrp docker
+
+git clone https://collaborating.tuhh.de/e-19/teaching/bd26_project_t5_c.git
+cd bd26_project_t5_c
+
+# Download the full Safecast dataset directly on the instance (do NOT scp it, it's ~30GB):
+cd data
+curl -o measurements-out.csv "https://api.safecast.org/system/measurements.csv"
+cd ..
+
+docker compose up --build -d
+```
+
+The frontend URLs are baked in at build time. Before building, create `frontend/.env`:
+
+```bash
+VITE_API_URL=http://13.63.169.164:8000
+VITE_WS_URL=ws://13.63.169.164:8000/ws
+```
+
+And set the backend's CORS origin in `docker-compose.yml` to match your public IP:
+
+```yaml
+backend:
+  environment:
+    BACKEND_CORS_ORIGINS: '["http://13.63.169.164:5173", "http://localhost:5173"]'
+```
+
+Then open `http://13.63.169.164:5173`.
+
+> Tip: allocate an **Elastic IP** and associate it with the instance so the public IP stays fixed
+> across stop/start cycles — otherwise a restarted instance may get a new IP and break the URLs above.
+
+---
+
+## Docker Images
+
+Published publicly on Docker Hub:
+
+```bash
+docker pull roshinroy/radiation-producer:latest
+docker pull roshinroy/radiation-flink-job:latest
+docker pull roshinroy/radiation-backend:latest
+docker pull roshinroy/radiation-frontend:latest
+```
+
+To run from these instead of building locally, `docker-compose.yml` already references these
+images directly (`image:` instead of `build:`) for `producer`, `flink-jobmanager`,
+`flink-taskmanager`, `flink-submitter`, `backend`, and `frontend`. Just run:
+
+```bash
+docker compose up -d
+```
+
+and Docker will pull the published images automatically instead of building from source.
+
+---
+
+## Repository Layout
+
+```
+producer/           Configurable Kafka data provider (Safecast CSV → radiation-raw)
+flink-job/          Stream processing topology and operators
+radiation-backend/  FastAPI: Kafka consumer, Redis cache, TimescaleDB, REST + WebSocket
+frontend/           React + Leaflet GUI
+docker-compose.yml  Full stack
+data/               Safecast dataset (not in Git)
+```
+
+All development branches are preserved. `main` is the released state; features were merged via GitLab Merge Requests with peer review.
+
+---
+
+## Team
+
+| Member               | Responsibility                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Ayush Parab          | FastAPI backend , Redis, TimescaleDB, REST/WebSocket, replay feature                                           |
+| Roshin Roy           | Kafka data provider, Redis, Docker infrastructure / Backend Optimization / Frontend Configuration Features     |
+| Roshan S             | Frontend Side Panel Features                                                                                   |
+| Mrudula Sachin Rothe | React / Leaflet map and dashboard / Flink Advanced Operators / Frontend WebSocket Integration / Backend models |
+| Chanakya Gummidipudi | Frontend Structure / Frontend Leaflet Map                                                                      |
+| Moniya Mohan         | Flink topology and operators, React / dashboard features / Backend Optimization                                |
+
+---
+
+## Troubleshooting
+
+| Symptom                                         | Fix                                                                              |
+| ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| Map empty                                       | Check the Flink job is `RUNNING` at :8081; `docker compose logs flink-submitter` |
+| No live data in UI                              | WebSocket blocked — verify `VITE_WS_URL` and that port 8000 is open              |
+| CORS error                                      | Add the frontend origin to `BACKEND_CORS_ORIGINS`                                |
+| Kafka/Flink container exits                     | Not enough RAM — lower `KAFKA_HEAP_OPTS` / taskmanager memory                    |
+| `FileNotFoundError: /data/measurements-out.csv` | Dataset missing — see Quick Start                                                |
+| History endpoints empty                         | TimescaleDB only stores data since startup; let the producer run a few minutes   |
