@@ -29,9 +29,24 @@ All data processing happens in Flink. The backend only caches, persists and forw
 ## Architecture
 
 ```
-Safecast CSV → Producer → Kafka → Flink → Backend (FastAPI) → Frontend (React + Leaflet)
-                                            ├── Redis        (live state, config)
-                                            └── TimescaleDB  (history)
+┌─────────────┐   ┌─────────┐   ┌──────────────────┐   ┌──────────────────────┐   ┌──────────────┐
+│  Producer   │──>│  Kafka  │──>| Apache Flink     │──>|   Kafka (topics)     │──>|      Backend │
+│ (Safecast   │   │ (broker)│   │  (processing)    │   │  clean / current /   │   │  (FastAPI)   │
+│  replay)    │   │         │   │                  │   │  alerts / stats /    │   │              │
+└─────────────┘   └─────────┘   └──────────────────┘   │  heatmap / spikes /  │   └──────┬───────┘
+                                                       |  top                 │          │
+                                                       └──────────────────────┘   ┌──────┴───────┐
+                                                                                  │    Redis +   |
+                                                                                  | Timescale Db │
+                                                                                  └──────┬───────┘
+                                                                                         │
+                                                                                    REST + WebSocket
+                                                                                         │
+                                                                                     ┌─────────────┐
+                                                                                     │  Frontend   │
+                                                                                     │ (React +    │
+                                                                                     │  Leaflet)   │
+                                                                                     └─────────────┘
 ```
 
 | Service          | Port     | Purpose          |
@@ -229,8 +244,8 @@ All development branches are preserved. `main` is the released state; features w
 | Member               | Responsibility                                                                                                 |
 | -------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Ayush Parab          | FastAPI backend , Redis, TimescaleDB, REST/WebSocket, replay feature                                           |
-| Roshin Roy           | Kafka data provider, Redis, Docker infrastructure / Backend Optimization / Frontend Configuration Features     |
-| Roshan S             | Frontend Side Panel Features                                                                                   |
+| Roshin Roy           | Kafka data provider, Redis, Docker infrastructure / Backend Optimization / Frontend Configuration Features /Docker image creation     |
+| Roshan S             | Frontend Side Panel Features / Cloud Deployment                                                                                  |
 | Mrudula Sachin Rothe | React / Leaflet map and dashboard / Flink Advanced Operators / Frontend WebSocket Integration / Backend models |
 | Chanakya Gummidipudi | Frontend Structure / Frontend Leaflet Map                                                                      |
 | Moniya Mohan         | Flink topology and operators, React / dashboard features / Backend Optimization                                |
