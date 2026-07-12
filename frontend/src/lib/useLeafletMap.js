@@ -57,6 +57,7 @@ export function useLeafletMap(containerId) {
       mapRef.current = null;
       sensorLayerRef.current = null;
       heatLayerRef.current = null;
+      clearInterval(heatPruneId); 
     };
   }, [containerId]);
 
@@ -126,18 +127,32 @@ export function useLeafletMap(containerId) {
   // live single cell (channel="heatmap", data = one cell)
   const renderHeatmapCell = useCallback((cell) => {
     if (!cell?.geohash) return;
+    cell._ts = Date.now();
     heatCellsRef.current.set(cell.geohash, cell);
     redrawHeat();
   }, [redrawHeat]);
 
-  // bulk snapshot (channel="heatmap", data.cells = array)
+
   const renderHeatmap = useCallback((cells) => {
     if (!Array.isArray(cells)) return;
+    const now = Date.now();
     cells.forEach((c) => {
-      if (c?.geohash) heatCellsRef.current.set(c.geohash, c);
+      if (c?.geohash) { c._ts = now; heatCellsRef.current.set(c.geohash, c); }
     });
     redrawHeat();
   }, [redrawHeat]);
+
+  const heatPruneId = setInterval(() => {
+    const cutoff = Date.now() - 90 * 1000;   
+    let changed = false;
+    heatCellsRef.current.forEach((c, gh) => {
+    if (c._ts && c._ts < cutoff) {
+      heatCellsRef.current.delete(gh);
+      changed = true;
+    }
+  });
+  if (changed) redrawHeat();
+  }, 15000);
 
   const pulseSpike = useCallback((reading) => {
     const map = mapRef.current;

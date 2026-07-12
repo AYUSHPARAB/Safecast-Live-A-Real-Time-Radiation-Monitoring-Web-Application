@@ -25,7 +25,7 @@ export default function App() {
   const map = useLeafletMap("rc-map");
 
   const [config,      setConfig]      = useState(DEFAULT_CONFIG);
-  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(true);
 
   // ── Live data state 
   const [stats,     setStats]     = useState(null);
@@ -148,6 +148,13 @@ export default function App() {
       console.error("timeseries fetch failed", e);
     }
   }, []);
+
+  const didAutoConnect = useRef(false);
+  useEffect(() => {
+    if (didAutoConnect.current) return;
+    didAutoConnect.current = true;
+    handleToggle();          // auto go-live on load
+  }, []); 
 
   useEffect(() => {
     loadTrend(config.timespan);

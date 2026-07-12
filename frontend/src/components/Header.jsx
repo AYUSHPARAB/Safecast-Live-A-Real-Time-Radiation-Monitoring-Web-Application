@@ -32,7 +32,7 @@ export default function Header({ status, health, onToggle }) {
       <button
         className="rc-conn-btn"
         type="button"
-        onClick={() => window.open("localhost:5173/replay.html", "_blank")}
+        onClick={() => window.open("/replay.html", "_blank")}
         style={{ marginRight: 10 }}
       >
         ▶️ Replay
