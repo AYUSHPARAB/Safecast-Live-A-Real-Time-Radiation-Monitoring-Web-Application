@@ -4,7 +4,7 @@
 
 A stream-processing pipeline that replays the [Safecast](https://safecast.org/data/download/) radiation data through **Apache Kafka**, analyses it with **Apache Flink**, and displays it live on a world map.
 
-**Live demo:** `http://<AZURE_PUBLIC_IP>:5173` <!-- TODO: paste public URL -->
+**Live demo:** `http://13.63.169.164:5173/`
 
 ---
 
