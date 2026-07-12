@@ -87,7 +87,8 @@ class HeatmapCell(BaseModel):
 class Hotspot(BaseModel):
     rank: int
     geohash: str
-    location: str = ""
+    city: str 
+    country: str
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     max_cpm: float

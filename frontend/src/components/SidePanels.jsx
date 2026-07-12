@@ -105,8 +105,8 @@ export function TopHotspots({ hotspots, onSelect }) {
       <div className="rc-feed">
         {hotspots.length === 0 ? <EmptyFeed message="No hotspot data available." /> : hotspots.map((hotspot) => (
           <FeedRow key={hotspot.rank} rank={hotspot.rank} level={hotspot.level}
-            primary={hotspot.location}
-            secondary={`avg ${hotspot.avg_cpm} · n=${hotspot.count}`}
+            primary={[hotspot.city, hotspot.country].join(", ")}
+            secondary={`average: ${hotspot.avg_cpm}`}
             value={`${hotspot.max_cpm} CPM`}
             onClick={() => onSelect?.(hotspot.lat, hotspot.lon)} />
         ))}
