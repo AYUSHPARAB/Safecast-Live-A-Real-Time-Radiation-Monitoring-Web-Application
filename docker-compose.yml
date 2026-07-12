@@ -3,6 +3,7 @@ services:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+    restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -31,6 +32,7 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    restart: unless-stopped
 
   kafka-setup:
     image: confluentinc/cp-kafka:7.5.0
@@ -54,11 +56,9 @@ services:
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-heatmap --partitions 4 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
-      --topic radiation-config --partitions 1 --replication-factor 1 &&
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists
       --topic radiation-top --partitions 1 --replication-factor 1 &&
-      kafka-console-producer --bootstrap-server kafka:29092 --topic radiation-config <<< '{"threshold": 100.0}' &&
       echo 'All topics created.'"
+    restart: unless-stopped
 
   producer:
     build: ./producer
@@ -74,6 +74,7 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       SPEED_MULTIPLIER: "0.01"
       MAX_SLEEP: "15.0"
+    restart: unless-stopped
 
   flink-jobmanager:
     build: ./flink-job
@@ -90,6 +91,7 @@ services:
     depends_on:
       kafka-setup:
         condition: service_completed_successfully
+    restart: unless-stopped
 
   flink-taskmanager:
     build: ./flink-job
@@ -110,6 +112,7 @@ services:
         taskmanager.numberOfTaskSlots: 8
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
+    restart: unless-stopped
   flink-submitter:
     build: ./flink-job
     environment:
@@ -133,6 +136,7 @@ services:
         until bash -c 'echo > /dev/tcp/flink-jobmanager/8081' 2>/dev/null; do echo "waiting for jobmanager..."; sleep 3; done
         sleep 30
         flink run -m flink-jobmanager:8081 -pyclientexec python3 -pyexec python3 -pyfs /opt/flink/usrlib -py /opt/flink/usrlib/flink_job.py
+    restart: unless-stopped
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -143,12 +147,14 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
       - kafka
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: redis
     ports:
       - "6379:6379"
+    restart: unless-stopped
 
   backend:
     build: ./radiation-backend
@@ -197,5 +203,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 volumes:
   timescale_data:  
