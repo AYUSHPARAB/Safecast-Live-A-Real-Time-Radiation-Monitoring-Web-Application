@@ -28,17 +28,18 @@ export default function Header({ status, health, onToggle }) {
 
       <div className="rc-spacer" />
 
-      {/* Go live / Disconnect button */}
+
       <button
         className="rc-conn-btn"
         type="button"
-        onClick={() => window.open("/replay.html", "_blank")}
+        onClick={() => {
+          window.location.href = "/replay.html";
+        }}
         style={{ marginRight: 10 }}
       >
         Replay
       </button>
 
-      {/* Go live / Disconnect button */}
       <button
         className={`rc-conn-btn${isLive ? " rc-conn-btn--live" : ""}`}
         type="button"

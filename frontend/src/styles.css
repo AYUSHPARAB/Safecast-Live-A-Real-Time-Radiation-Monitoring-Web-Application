@@ -132,16 +132,15 @@ select {
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
-.rc-conn-btn:hover {
+.rc-conn-btn:not(.rc-conn-btn--live):hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.rc-conn-btn--live {
-  border-color: var(--accent);
-  background: var(--accent);
+.rc-conn-btn--live:hover {
+  background: #43def4; 
+  border-color: #43def4;
   color: #04252b;
-  font-weight: 600;
 }
 
 /* Side rails */
