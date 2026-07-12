@@ -32,3 +32,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 SELECT create_hypertable('alerts', 'captured_at', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_alerts_time ON alerts (captured_at DESC);
+
+-- ─── Retention policies ───
+SELECT add_retention_policy('readings', INTERVAL '10 days', if_not_exists => TRUE);
+SELECT add_retention_policy('alerts',   INTERVAL '10 days', if_not_exists => TRUE);
