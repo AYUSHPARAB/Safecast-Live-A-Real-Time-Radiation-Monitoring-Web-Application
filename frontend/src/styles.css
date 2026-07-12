@@ -132,16 +132,15 @@ select {
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
-.rc-conn-btn:hover {
+.rc-conn-btn:not(.rc-conn-btn--live):hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.rc-conn-btn--live {
-  border-color: var(--accent);
-  background: var(--accent);
+.rc-conn-btn--live:hover {
+  background: #43def4; 
+  border-color: #43def4;
   color: #04252b;
-  font-weight: 600;
 }
 
 /* Side rails */
@@ -323,30 +322,39 @@ select {
   font-size: 10px;
 }
 
-.rc-statgrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+.rc-stat {
+  background: #1b2430;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  padding: 18px;
+  min-height: 95px;
+
+  transition: transform .2s ease, border-color .2s ease;
 }
 
-.rc-stat {
-  padding: 9px 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--elev);
+.rc-stat:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,.12);
 }
 
 .rc-stat .v {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #fff;
 }
 
 .rc-stat .l {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  margin-top: 6px;
+  font-size: .75rem;
+  letter-spacing: 2px;
   text-transform: uppercase;
+  color: #9aa4b2;
 }
 
 .rc-feed {
@@ -483,18 +491,46 @@ select {
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
   white-space: nowrap;
+  overflow: hidden;       
+  flex-wrap: nowrap;       
 }
 
-.rc-geiger {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--muted);
+
+
+.rc-ticker-track {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-wrap: nowrap;    
+  min-width: 0;   
+  
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 4%,
+    black 96%,
+    transparent 100%
+  );
 }
 
-.rc-tick-label,
 .rc-tick-item {
-  color: var(--muted);
+  color: var(--text);          
+  flex-shrink: 0;
+  padding-right: 4px;
+  animation: tick-slide-in 0.5s ease;
+}
+
+@keyframes tick-slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+
+@keyframes ticker-blink {
+  50% { opacity: 0.2; }
 }
 
 /* Tablet layout */
@@ -575,7 +611,7 @@ select {
   font-weight: 600;
 }
  
-/* Pulse animation for the header dot when live */
+
 @keyframes pulse-ring {
   0%   { box-shadow: 0 0 0 0   rgba(63, 185, 80, 0.5); }
   70%  { box-shadow: 0 0 0 8px rgba(63, 185, 80, 0);   }

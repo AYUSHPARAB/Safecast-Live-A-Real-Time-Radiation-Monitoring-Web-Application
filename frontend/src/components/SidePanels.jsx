@@ -7,15 +7,16 @@ function levelOf(cpm) {
   return "safe";
 }
 
-function Sparkline({ timeseries, color }) {
-  console.log("[Sparkline] timeseries:", timeseries);
-  if (!timeseries || timeseries.length < 2) {
-    return <div className="rc-spark rc-spark-empty">No trend data</div>;
+function Sparkline({ data, color }) {
+  if (!data || data.length < 2) {
+    return <div className="rc-spark rc-spark-empty">Collecting live data…</div>;
   }
 
-  const values = timeseries.map((point) => point.avg_cpm).filter(Number.isFinite);
+  const values = data
+    .map((point) => (point.avg ?? point.avg_cpm))
+    .filter(Number.isFinite);
   if (values.length < 2) {
-    return <div className="rc-spark rc-spark-empty">No trend data</div>;
+    return <div className="rc-spark rc-spark-empty">Collecting live data…</div>;
   }
 
   const width = 268;
@@ -37,7 +38,7 @@ function Sparkline({ timeseries, color }) {
   );
 }
 
-export function StatsPanel({ stats, timeseries, alertsCount, onMap }) {
+export function StatsPanel({ stats, liveTrend, alertsCount, onMap }) {
   const average = stats?.avg_cpm ?? null;
   const color = average === null ? "var(--muted)" : COLORS[levelOf(average)];
 
@@ -50,12 +51,24 @@ export function StatsPanel({ stats, timeseries, alertsCount, onMap }) {
         </div>
         <div className="unit">AVG CPM</div>
       </div>
-      <Sparkline timeseries={timeseries} color={color} />
-      <div className="rc-statgrid">
-        <div className="rc-stat"><div className="v">{stats?.max_cpm ?? "—"}</div><div className="l">Max CPM</div></div>
-        <div className="rc-stat"><div className="v">{stats?.active_sensors ?? "—"}</div><div className="l">Sensors</div></div>
-        <div className="rc-stat"><div className="v">{alertsCount ?? 0}</div><div className="l">Alerts</div></div>
-        <div className="rc-stat"><div className="v">{onMap}</div><div className="l">On map</div></div>
+      <Sparkline data={liveTrend} color={color} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="rc-stat">
+            <div className="v">{stats?.max_cpm ?? "—"}</div>
+            <div className="l">Max CPM</div>
+          </div>
+          <div className="rc-stat">
+            <div className="v">{alertsCount ?? 0}</div>
+            <div className="l">Alerts</div>
+          </div>
+        </div>
+
+        <div className="rc-stat">
+          <div className="v">{stats?.active_sensors ?? "—"}</div>
+          <div className="l">Sensors</div>
+        </div>
       </div>
     </section>
   );
@@ -65,16 +78,36 @@ function EmptyFeed({ message }) {
   return <div className="rc-empty">{message}</div>;
 }
 
-function FeedRow({ level, primary, secondary, value, onClick, rank }) {
+function FeedRow({
+  level,
+  primary,
+  secondary,
+  value,
+  onClick,
+  rank,
+  showDot = true,
+  valueColor,
+}) {
   return (
     <div className={`rc-row${onClick ? " rc-row--click" : ""}`} onClick={onClick}>
       {rank != null && <span className="rc-row-rank rc-mono">#{rank}</span>}
-      <span className="rc-row-dot" style={{ background: COLORS[level] || COLORS.safe }} />
+
+      {showDot && (
+        <span
+          className="rc-row-dot"
+          style={{ background: COLORS[level] || COLORS.safe }}
+        />
+      )}
+
       <span className="rc-row-body">
         <span className="rc-row-primary">{primary}</span>
         {secondary && <span className="rc-row-secondary">{secondary}</span>}
       </span>
-      <span className="rc-row-value rc-mono" style={{ color: COLORS[level] || COLORS.safe }}>
+
+      <span
+        className="rc-row-value rc-mono"
+        style={{ color: valueColor || COLORS[level] || COLORS.safe }}
+      >
         {value}
       </span>
     </div>
@@ -121,11 +154,15 @@ export function SpikesFeed({ spikes }) {
       <div className="rc-eyebrow">Spikes <span>{spikes.length}</span></div>
       <div className="rc-feed">
         {spikes.length === 0 ? <EmptyFeed message="No spikes received." /> : spikes.map((spike, index) => (
-          <FeedRow key={`${spike.sensor_key}-${spike.captured_at}-${index}`}
+          <FeedRow
+            key={`${spike.sensor_key}-${spike.captured_at}-${index}`}
             level={spike.level}
+            showDot={false}
+            valueColor="var(--text)"
             primary={[spike.city, spike.country].filter(Boolean).join(", ") || spike.sensor_key}
             secondary={`${spike.previous_cpm} → ${spike.cpm} CPM`}
-            value={`${spike.jump_ratio}×`} />
+            value={`${spike.jump_ratio}×`}
+          />
         ))}
       </div>
     </section>

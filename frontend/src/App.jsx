@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import Header from "./components/Header.jsx";
 import ConfigPanel from "./components/ConfigPanel.jsx";
 import { Legend, Ticker } from "./components/Chrome.jsx";
@@ -25,7 +25,6 @@ export default function App() {
   const map = useLeafletMap("rc-map");
 
   const [config,      setConfig]      = useState(DEFAULT_CONFIG);
-  const [showHeatmap, setShowHeatmap] = useState(true);
 
   // ── Live data state 
   const [stats,     setStats]     = useState(null);
@@ -35,8 +34,8 @@ export default function App() {
   const [tickItems, setTickItems] = useState([]);
   const [health,    setHealth]    = useState(undefined);
   const [timeseries, setTimeseries] = useState([]);
-
-  const lastTickRef = useRef(0);
+  const [liveTrend, setLiveTrend] = useState([]);
+  
 
   const onMessage = useCallback((msg) => {
     const { channel, data } = msg;
@@ -52,15 +51,10 @@ export default function App() {
         break;
 
       case "current":
-        
         map.renderSensor(data);
-        // Update ticker at most every 2 seconds — otherwise unreadable
-        if (Date.now() - lastTickRef.current > 2000) {
-          lastTickRef.current = Date.now();
-          setTickItems((prev) =>
-            [{ cpm: data.cpm, city: data.city, level: data.level }, ...prev].slice(0, 6)
-          );
-        }
+        setTickItems((prev) =>
+          [{ cpm: data.cpm, city: data.city, level: data.level }, ...prev].slice(0, 50)
+        );
         break;
 
       case "alerts":
@@ -75,8 +69,10 @@ export default function App() {
         break;
 
       case "stats":
-        
         setStats(data);
+        setLiveTrend(prev =>
+          [...prev, { t: Date.now(), avg: Math.round(data.avg_cpm) }].slice(-30)
+        );
         break;
 
       case "heatmap":
@@ -170,13 +166,6 @@ export default function App() {
     loadTrend(next.timespan);   
   }
 
-  function toggleHeatmap() {
-    setShowHeatmap((visible) => {
-      map.toggleHeatmap(!visible);
-      return !visible;
-    });
-  }
-
   return (
     <div className="rc-root">
       <Header status={status} health={health} onToggle={handleToggle} />
@@ -185,8 +174,6 @@ export default function App() {
         <ConfigPanel
           cfg={config}
           onChange={changeConfig}
-          showHeat={showHeatmap}
-          onToggleHeat={toggleHeatmap}
           timeseries={timeseries}
         />
 
@@ -198,7 +185,7 @@ export default function App() {
 
         <aside className="rc-rail right">
           
-          <StatsPanel stats={stats} timeseries={timeseries} alertsCount={alerts.length} onMap={map.markerCount()} />
+          <StatsPanel stats={stats} liveTrend={liveTrend} alertsCount={alerts.length} onMap={map.markerCount()} />
 
           
           <AlertsFeed alerts={alerts} />

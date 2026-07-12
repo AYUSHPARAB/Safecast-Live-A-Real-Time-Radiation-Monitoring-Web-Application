@@ -63,7 +63,6 @@ export default function ReplayPage() {
   const [speed, setSpeed] = useState(1);
   const [bounds, setBounds] = useState({ t0: 0, t1: 0 });
   const [clockUi, setClockUi] = useState(0);
-  const [lastQuery, setLastQuery] = useState(null);
 
   // live copies for the rAF-loop closures
   const speedRef = useRef(speed);
@@ -135,7 +134,7 @@ export default function ReplayPage() {
     setLoading(true);
     setError(null);
     setIsPlaying(false);
-    setLastQuery({ start: startIso, end: endIso });
+
     try {
       const data = await getPointsHistory(startIso, endIso, 5000);
 
@@ -214,7 +213,7 @@ export default function ReplayPage() {
         </div>
         <div className="rc-spacer" />
         <a className="rc-conn-btn" href="/" style={{ marginRight: 10, textDecoration: "none" }}>
-          ← Live map
+          Live Map
         </a>
         <div className="rc-conn rc-mono">
           <span className="rc-dot" style={{ background: count ? "var(--safe)" : "var(--muted)" }} />
@@ -252,11 +251,6 @@ export default function ReplayPage() {
               {loading ? "Loading…" : "Load range"}
             </button>
 
-            {lastQuery && (
-              <p className="rc-hint rc-mono" style={{ wordBreak: "break-all" }}>
-                GET /api/points/history?start={lastQuery.start}&amp;end={lastQuery.end}
-              </p>
-            )}
           </div>
 
           {/* PLAYBACK */}

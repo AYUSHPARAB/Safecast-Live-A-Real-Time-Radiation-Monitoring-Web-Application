@@ -45,7 +45,7 @@ function initialSpeedIndex(speed) {
   return i !== -1 ? i : 1;
 }
 
-export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, timeseries }) {
+export default function ConfigPanel({ cfg, onChange, timeseries }) {
   const [draft, setDraft] = useState(cfg);
   const [area, setArea] = useState(AREAS[0].label);
   const [speedIndex, setSpeedIndex] = useState(() => initialSpeedIndex(cfg.speed));
@@ -177,14 +177,13 @@ export default function ConfigPanel({ cfg, onChange, showHeat, onToggleHeat, tim
         </div>
 
         <TrendChart timeseries={timeseries} hours={draft.timespan} />
-
-        <button
+        {/* <button
           className={`rc-btn rc-heat${showHeat ? " on" : ""}`}
           type="button"
           onClick={onToggleHeat}
         >
           {showHeat ? "Hide heatmap layer" : "Show heatmap layer"}
-        </button>
+        </button> */}
       </section>
     </aside>
   );
