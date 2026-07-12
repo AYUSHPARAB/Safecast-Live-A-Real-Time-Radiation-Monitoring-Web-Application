@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import Header from "./components/Header.jsx";
 import ConfigPanel from "./components/ConfigPanel.jsx";
 import { Legend, Ticker } from "./components/Chrome.jsx";
@@ -36,7 +36,7 @@ export default function App() {
   const [health,    setHealth]    = useState(undefined);
   const [timeseries, setTimeseries] = useState([]);
 
-  const lastTickRef = useRef(0);
+  
 
   const onMessage = useCallback((msg) => {
     const { channel, data } = msg;
@@ -52,15 +52,10 @@ export default function App() {
         break;
 
       case "current":
-        
         map.renderSensor(data);
-        // Update ticker at most every 2 seconds — otherwise unreadable
-        if (Date.now() - lastTickRef.current > 2000) {
-          lastTickRef.current = Date.now();
-          setTickItems((prev) =>
-            [{ cpm: data.cpm, city: data.city, level: data.level }, ...prev].slice(0, 6)
-          );
-        }
+        setTickItems((prev) =>
+          [{ cpm: data.cpm, city: data.city, level: data.level }, ...prev].slice(0, 50)
+        );
         break;
 
       case "alerts":

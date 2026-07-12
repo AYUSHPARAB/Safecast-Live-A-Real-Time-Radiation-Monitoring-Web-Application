@@ -7,6 +7,13 @@ const LEVELS = [
   ["high"],
 ];
 
+const DOT_COLOR = {
+  disconnected: "var(--muted)",
+  connecting:   "var(--accent)",
+  live:         "var(--safe)",
+  error:        "var(--high)",
+};
+
 export function Legend() {
   return (
     <div className="rc-legend rc-mono">
@@ -22,14 +29,41 @@ export function Legend() {
   );
 }
 
-export function Ticker({ items }) {
+export function Ticker({ items, status }) {
+  const dotColor = DOT_COLOR[status] || "var(--muted)";
+
   return (
     <footer className="rc-ticker">
-      <span className="rc-geiger" />
-      <span className="rc-tick-label">STREAM</span>
-      {items.length === 0 ? (
-        <span className="rc-tick-item">Awaiting backend readings…</span>
-      ) : null}
+      <span
+        className="rc-geiger"
+        style={{
+          background: dotColor,
+          animation: status === "live" ? "ticker-blink 0.9s step-start infinite" : "none",
+          flexShrink: 0,
+        }}
+      />
+      <span className="rc-tick-label" style={{ flexShrink: 0 }}>
+        STREAM
+      </span>
+
+      {/* ADD this wrapper div */}
+      <div className="rc-ticker-track">
+        {items.length === 0 ? (
+          <span className="rc-tick-item" style={{ color: "var(--muted)" }}>
+            {status === "live" ? "Receiving…" : "Awaiting backend readings…"}
+          </span>
+        ) : (
+          items.map((item, i) => (
+            <span className="rc-tick-item" key={i}>
+              {item.city || "—"}&nbsp;
+              <b style={{ color: COLORS[item.level] || COLORS.safe }}>
+                {item.cpm} cpm
+              </b>
+              <span style={{ color: "var(--muted)", margin: "0 6px" }}>·</span>
+            </span>
+          ))
+        )}
+      </div>
     </footer>
   );
 }

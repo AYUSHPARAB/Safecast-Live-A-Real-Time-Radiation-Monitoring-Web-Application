@@ -480,7 +480,7 @@ select {
   margin-left: auto;
   color: var(--muted);
 }
-
+/* FIND this existing rule and update it — don't add a new one */
 .rc-ticker {
   display: flex;
   align-items: center;
@@ -492,18 +492,47 @@ select {
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
   white-space: nowrap;
+  overflow: hidden;        /* ADD this line */
+  flex-wrap: nowrap;       /* ADD this line — prevents wrapping to second line */
 }
 
-.rc-geiger {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--muted);
+
+/* Scrolling track inside the ticker */
+.rc-ticker-track {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-wrap: nowrap;    
+  min-width: 0;   
+  /* Fade edges so scroll feels natural */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 4%,
+    black 96%,
+    transparent 100%
+  );
 }
 
-.rc-tick-label,
+/* Each individual tick item */
 .rc-tick-item {
-  color: var(--muted);
+  color: var(--text);           /* white, not muted grey */
+  flex-shrink: 0;
+  padding-right: 4px;
+  animation: tick-slide-in 0.5s ease;
+}
+
+@keyframes tick-slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Blink animation for the geiger dot */
+@keyframes ticker-blink {
+  50% { opacity: 0.2; }
 }
 
 /* Tablet layout */
