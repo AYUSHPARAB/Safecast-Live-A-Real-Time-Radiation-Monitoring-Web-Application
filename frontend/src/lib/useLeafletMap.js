@@ -24,7 +24,30 @@ export function useLeafletMap(containerId) {
   const markerOrderRef = useRef([]);
   const spikeTimersRef = useRef(new Set());
   const [markerTotal, setMarkerTotal] = useState(0);
-  // const heatVisibleRef = useRef(true);
+  const redrawHeatRef = useRef(null);          
+
+  const redrawHeat = useCallback(() => {
+    const layer = heatLayerRef.current;
+    if (!layer) return;
+
+    const activeGeohashes = new Set();
+    markersRef.current.forEach((m) => {
+      if (m._geohash) activeGeohashes.add(m._geohash);
+    });
+
+    const pts = [];
+    heatCellsRef.current.forEach((cell) => {
+      if (activeGeohashes.size === 0 || activeGeohashes.has(cell.geohash)) {
+        const intensity = LEVEL_INTENSITY[cell.level] ?? 0.15;
+        pts.push([cell.cell_lat, cell.cell_lon, intensity]);
+      }
+    });
+    layer.setLatLngs(pts);
+  }, []);
+
+  useEffect(() => {
+    redrawHeatRef.current = redrawHeat;
+  }, [redrawHeat]);
 
   useEffect(() => {
     const map = L.map(containerId, {
@@ -57,22 +80,22 @@ export function useLeafletMap(containerId) {
         if (map.hasLayer(heat)) map.removeLayer(heat);   // zoomed in -> hide
       } else {
         if (!map.hasLayer(heat)) map.addLayer(heat);     // zoomed out -> show
-        redrawHeat();                                   
+        redrawHeatRef.current?.();                                  
       }
     };
     map.on("zoomend", applyZoomMode);
     applyZoomMode();
 
     const heatPruneId = setInterval(() => {
-      const cutoff = Date.now() - 3600 * 1000;  
+      const cutoff = Date.now() - 5 * 60 * 1000;
       let changed = false;
       heatCellsRef.current.forEach((c, gh) => {
-      if (c._ts && c._ts < cutoff) {
+      if (!c._ts || c._ts < cutoff) { 
       heatCellsRef.current.delete(gh);
       changed = true;
     }
     });
-    if (changed) redrawHeat();
+    if (changed) redrawHeatRef.current?.();
   }, 60000); 
 
     const markers = markersRef.current;
@@ -94,9 +117,6 @@ export function useLeafletMap(containerId) {
   const renderSensor = useCallback((reading) => {
     const layer = sensorLayerRef.current;
     if (!layer || !reading?.sensor_key) return;
-
-    // setTotalReceived((count) => count + 1);
-
     const el = document.querySelector(".rc-map-empty");   
     if (el) el.style.display = "none";
 
@@ -108,6 +128,7 @@ export function useLeafletMap(containerId) {
       marker.setLatLng([reading.latitude, reading.longitude]);
       marker.setStyle({ color, fillColor: color });
       marker.setRadius(radius);
+      marker._geohash = reading.geohash;
     } else {
       marker = L.circleMarker([reading.latitude, reading.longitude], {
         radius,
@@ -116,20 +137,32 @@ export function useLeafletMap(containerId) {
         fillOpacity: 0.75,
         weight: 1,
       }).addTo(layer);
+      marker._geohash = reading.geohash;
       markersRef.current.set(reading.sensor_key, marker);
       markerOrderRef.current.push(reading.sensor_key);
 
       if (markerOrderRef.current.length > MAX_MARKERS) {
         const oldestKey = markerOrderRef.current.shift();
         const oldestMarker = markersRef.current.get(oldestKey);
-        if (oldestMarker) layer.removeLayer(oldestMarker);
+        if (oldestMarker) {
+          layer.removeLayer(oldestMarker);
+          const evictedGh = oldestMarker._geohash;
+          if (evictedGh) {
+            const stillHas = [...markersRef.current.values()]
+            .some(m => m !== oldestMarker && m._geohash === evictedGh);
+            if (!stillHas) {
+              heatCellsRef.current.delete(evictedGh);
+              redrawHeat();
+            }
+          }
+        }
         markersRef.current.delete(oldestKey);
       }
       setMarkerTotal(markersRef.current.size);
     }
 
     marker.bindTooltip(sensorTooltip(reading), { direction: "top", offset: [0, -4] });
-  }, []);
+  }, [redrawHeat]);
 
   const renderSnapshot = useCallback((readings) => {
     const layer = sensorLayerRef.current;
@@ -138,21 +171,11 @@ export function useLeafletMap(containerId) {
     layer.clearLayers();
     markersRef.current.clear();
     markerOrderRef.current = [];
-    // setTotalReceived(0);
+    heatCellsRef.current.clear(); 
+    redrawHeatRef.current?.(); 
     readings.forEach(renderSensor);
     setMarkerTotal(markersRef.current.size);
   }, [renderSensor]);
-
-  const redrawHeat = useCallback(() => {
-      const layer = heatLayerRef.current;
-      if (!layer) return;
-      const pts = [];
-      heatCellsRef.current.forEach((cell) => {
-        const intensity = LEVEL_INTENSITY[cell.level] ?? 0.15;
-        pts.push([cell.cell_lat, cell.cell_lon, intensity]);
-      });
-      layer.setLatLngs(pts);
-    }, []);
 
   // live single cell (channel="heatmap", data = one cell)
   const renderHeatmapCell = useCallback((cell) => {
@@ -208,19 +231,6 @@ export function useLeafletMap(containerId) {
   const flyTo = useCallback((lat, lon, zoom = 9) => {
     mapRef.current?.setView([lat, lon], zoom);
   }, []);
-
-  // const toggleHeatmap = useCallback((visible) => {
-  //   const map = mapRef.current;
-  //   const layer = heatLayerRef.current;
-  //   if (!map || !layer) return;
-  //   heatVisibleRef.current = visible;
-  //   const zoomedOut = map.getZoom() < 7;
-  //   if (visible && zoomedOut) {
-  //     if (!map.hasLayer(layer)) layer.addTo(map);
-  //   } else {
-  //     if (map.hasLayer(layer)) map.remove(layer);
-  //   }
-  // }, []);
 
   const markerCount = useCallback(() => markerTotal, [markerTotal]);
 
