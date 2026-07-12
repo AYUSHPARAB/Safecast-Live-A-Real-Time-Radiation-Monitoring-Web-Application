@@ -8,6 +8,7 @@ const DEFAULT_CENTER = [20, 10];
 const DEFAULT_ZOOM = 2;
 const MAX_MARKERS = 2500;
 const LEVEL_INTENSITY = { safe: 0.15, warning: 0.4, elevated: 0.7, high: 1.0 };
+const ZOOM_SWITCH = 7;
 
 function sensorTooltip(reading) {
   const location = [reading.city, reading.country].filter(Boolean).join(", ") || reading.sensor_key;
@@ -23,6 +24,7 @@ export function useLeafletMap(containerId) {
   const markerOrderRef = useRef([]);
   const spikeTimersRef = useRef(new Set());
   const [markerTotal, setMarkerTotal] = useState(0);
+  // const heatVisibleRef = useRef(true);
 
   useEffect(() => {
     const map = L.map(containerId, {
@@ -39,16 +41,45 @@ export function useLeafletMap(containerId) {
 
     sensorLayerRef.current = L.layerGroup().addTo(map);
     heatLayerRef.current = L.heatLayer([], {
-      radius: 35,
-      blur: 25,
+      radius: 28,
+      blur: 20,
+      max: 3.0,
+      minOpacity: 0.2,
       maxZoom: 10,
-      gradient: { 0.0:"#38f2a0", 0.4:"#ffb547", 0.7:"#ff7a3c", 1.0:"#ff3b4e" },
-    }).addTo(map);
+      gradient: { 0.15:"#38f2a0", 0.4:"#ffb547", 0.7:"#ff7a3c", 1.0:"#ff3b4e" },
+    }).addTo(map);   
     mapRef.current = map;
+
+    const applyZoomMode = () => {
+      const heat = heatLayerRef.current;
+      if (!heat) return;
+      if (map.getZoom() >= ZOOM_SWITCH) {
+        if (map.hasLayer(heat)) map.removeLayer(heat);   // zoomed in -> hide
+      } else {
+        if (!map.hasLayer(heat)) map.addLayer(heat);     // zoomed out -> show
+        redrawHeat();                                   
+      }
+    };
+    map.on("zoomend", applyZoomMode);
+    applyZoomMode();
+
+    const heatPruneId = setInterval(() => {
+      const cutoff = Date.now() - 3600 * 1000;  
+      let changed = false;
+      heatCellsRef.current.forEach((c, gh) => {
+      if (c._ts && c._ts < cutoff) {
+      heatCellsRef.current.delete(gh);
+      changed = true;
+    }
+    });
+    if (changed) redrawHeat();
+  }, 60000); 
 
     const markers = markersRef.current;
     const spikeTimers = spikeTimersRef.current;
     return () => {
+      map.off("zoomend", applyZoomMode);
+      clearInterval(heatPruneId);
       spikeTimers.forEach((timer) => clearInterval(timer));
       spikeTimers.clear();
       markers.clear();
@@ -57,7 +88,6 @@ export function useLeafletMap(containerId) {
       mapRef.current = null;
       sensorLayerRef.current = null;
       heatLayerRef.current = null;
-      clearInterval(heatPruneId); 
     };
   }, [containerId]);
 
@@ -142,18 +172,6 @@ export function useLeafletMap(containerId) {
     redrawHeat();
   }, [redrawHeat]);
 
-  const heatPruneId = setInterval(() => {
-    const cutoff = Date.now() - 90 * 1000;   
-    let changed = false;
-    heatCellsRef.current.forEach((c, gh) => {
-    if (c._ts && c._ts < cutoff) {
-      heatCellsRef.current.delete(gh);
-      changed = true;
-    }
-  });
-  if (changed) redrawHeat();
-  }, 15000);
-
   const pulseSpike = useCallback((reading) => {
     const map = mapRef.current;
     if (!map) return;
@@ -191,13 +209,18 @@ export function useLeafletMap(containerId) {
     mapRef.current?.setView([lat, lon], zoom);
   }, []);
 
-  const toggleHeatmap = useCallback((visible) => {
-    const map = mapRef.current;
-    const layer = heatLayerRef.current;
-    if (!map || !layer) return;
-    if (visible) layer.addTo(map);
-    else layer.remove();
-  }, []);
+  // const toggleHeatmap = useCallback((visible) => {
+  //   const map = mapRef.current;
+  //   const layer = heatLayerRef.current;
+  //   if (!map || !layer) return;
+  //   heatVisibleRef.current = visible;
+  //   const zoomedOut = map.getZoom() < 7;
+  //   if (visible && zoomedOut) {
+  //     if (!map.hasLayer(layer)) layer.addTo(map);
+  //   } else {
+  //     if (map.hasLayer(layer)) map.remove(layer);
+  //   }
+  // }, []);
 
   const markerCount = useCallback(() => markerTotal, [markerTotal]);
 
@@ -211,6 +234,5 @@ export function useLeafletMap(containerId) {
     markerCount,
     fitBox,
     resetView,
-    toggleHeatmap,
   };
 }

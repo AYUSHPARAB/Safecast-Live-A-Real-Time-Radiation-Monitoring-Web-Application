@@ -25,7 +25,7 @@ export default function App() {
   const map = useLeafletMap("rc-map");
 
   const [config,      setConfig]      = useState(DEFAULT_CONFIG);
-  const [showHeatmap, setShowHeatmap] = useState(true);
+  // const [showHeatmap, setShowHeatmap] = useState(true);
 
   // ── Live data state 
   const [stats,     setStats]     = useState(null);
@@ -170,12 +170,12 @@ export default function App() {
     loadTrend(next.timespan);   
   }
 
-  function toggleHeatmap() {
-    setShowHeatmap((visible) => {
-      map.toggleHeatmap(!visible);
-      return !visible;
-    });
-  }
+  // function toggleHeatmap() {
+  //   setShowHeatmap((visible) => {
+  //     map.toggleHeatmap(!visible);
+  //     return !visible;
+  //   });
+  // }
 
   return (
     <div className="rc-root">
@@ -185,8 +185,6 @@ export default function App() {
         <ConfigPanel
           cfg={config}
           onChange={changeConfig}
-          showHeat={showHeatmap}
-          onToggleHeat={toggleHeatmap}
           timeseries={timeseries}
         />
 
