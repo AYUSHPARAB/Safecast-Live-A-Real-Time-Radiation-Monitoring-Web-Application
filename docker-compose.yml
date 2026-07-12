@@ -61,7 +61,7 @@ services:
       echo 'All topics created.'"
 
   producer:
-    build: ./producer
+    image: roshinroy/radiation-producer:latest
     depends_on:
       kafka-setup:
         condition: service_completed_successfully
@@ -76,7 +76,7 @@ services:
       MAX_SLEEP: "15.0"
 
   flink-jobmanager:
-    build: ./flink-job
+    image: roshinroy/radiation-flink-job:latest
     container_name: flink-jobmanager
     command: jobmanager
     ports:
@@ -92,7 +92,7 @@ services:
         condition: service_completed_successfully
 
   flink-taskmanager:
-    build: ./flink-job
+    image: roshinroy/radiation-flink-job:latest
     container_name: flink-taskmanager
     command: taskmanager
     depends_on:
@@ -109,7 +109,7 @@ services:
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
   flink-submitter:
-    build: ./flink-job
+    image: roshinroy/radiation-flink-job:latest
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
@@ -149,7 +149,7 @@ services:
       - "6379:6379"
 
   backend:
-    build: ./radiation-backend
+    image: roshinroy/radiation-backend:latest
     container_name: backend
     ports:
       - "8000:8000"
@@ -171,7 +171,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
   frontend:
-    build: ./frontend
+    image: roshinroy/radiation-frontend:latest
     container_name: frontend
     ports:
       - "5173:5173"
