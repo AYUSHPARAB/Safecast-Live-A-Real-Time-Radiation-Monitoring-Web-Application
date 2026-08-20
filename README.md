@@ -1,10 +1,12 @@
-# Safecast Live — Real-Time Radiation Tracking
+# Real-Time Radiation Tracking
 
 **BD26 · Team T5 · Topic C** — Institute for Data Engineering, TUHH
 
 A stream-processing pipeline that replays the [Safecast](https://safecast.org/data/download/) radiation data through **Apache Kafka**, analyses it with **Apache Flink**, and displays it live on a world map.
 
-**Live demo:** `http://13.63.169.164:5173/`
+<img width="1600" height="951" alt="image" src="https://github.com/user-attachments/assets/115a446a-b577-4efb-95cf-47a7bb1daa17" />
+
+*The live console zoomed to Japan: green tracks are mobile sensors driving south from Tokyo, the red cluster in the north is the Fukushima exclusion zone. No location is hardcoded — the system surfaces it from raw coordinates and readings.*
 
 ---
 
@@ -17,10 +19,10 @@ A stream-processing pipeline that replays the [Safecast](https://safecast.org/da
 - **Alerts** — Any reading above the threshold produces an alert.
 - **Heatmap** — readings aggregated into geohash cells (data blobs).
 - **Top-N hotspots** — the most dangerous cells worldwide are ranked every 30 seconds.
-- **spike detection** — A sudden jump relative to a sensor's own moving average is flagged as a spike.
-- **global statistics** — rolling 30-second window produce global count, average and maximum cpm.
+- **Spike detection** — A sudden jump relative to a sensor's own moving average is flagged as a spike.
+- **Global statistics** — rolling 30-second window produce global count, average and maximum cpm.
 - **Area filter** — The map can be restricted to a region (World, Fukushima, Europe, Japan....) so fewer data items are displayed.
-- **time-window replay** — A separate replay page fetches a historical time window and animates it with play/pause, speed and a timeline scrubber.
+- **Time-window replay** — A separate replay page fetches a historical time window and animates it with play/pause, speed and a timeline scrubber.
 
 All data processing happens in Flink. The backend only caches, persists and forwards; the frontend only renders.
 
@@ -29,24 +31,9 @@ All data processing happens in Flink. The backend only caches, persists and forw
 ## Architecture
 
 ```
-┌─────────────┐   ┌─────────┐   ┌──────────────────┐   ┌──────────────────────┐   ┌──────────────┐
-│  Producer   │──>│  Kafka  │──>| Apache Flink     │──>|   Kafka (topics)     │──>|      Backend │
-│ (Safecast   │   │ (broker)│   │  (processing)    │   │  clean / current /   │   │  (FastAPI)   │
-│  replay)    │   │         │   │                  │   │  alerts / stats /    │   │              │
-└─────────────┘   └─────────┘   └──────────────────┘   │  heatmap / spikes /  │   └──────┬───────┘
-                                                       |  top                 │          │
-                                                       └──────────────────────┘   ┌──────┴───────┐
-                                                                                  │    Redis +   |
-                                                                                  | Timescale Db │
-                                                                                  └──────┬───────┘
-                                                                                         │
-                                                                                    REST + WebSocket
-                                                                                         │
-                                                                                     ┌─────────────┐
-                                                                                     │  Frontend   │
-                                                                                     │ (React +    │
-                                                                                     │  Leaflet)   │
-                                                                                     └─────────────┘
+Safecast CSV → Producer → Kafka → Flink → Backend (FastAPI) → Frontend (React + Leaflet)
+                                            ├── Redis        (live state, config)
+                                            └── TimescaleDB  (history)
 ```
 
 | Service          | Port     | Purpose          |
@@ -57,8 +44,7 @@ All data processing happens in Flink. The backend only caches, persists and forw
 | kafka-ui         | **8080** | Browse topics    |
 | kafka            | **9092** | Broker           |
 | redis            | **6379** | Live Cache       |
-| timescaledb      | **5432** | Browse topics    |
-| Infrastructure   |
+| timescaledb      | **5432** | History          |
 
 **Kafka topics:** radiation data -> `radiation-raw` (producer) → Flink → `radiation-clean`, `radiation-current`, `radiation-alerts`, `radiation-stats`, `radiation-spikes`, `radiation-heatmap`, `radiation-top`;
 
@@ -72,6 +58,45 @@ All data processing happens in Flink. The backend only caches, persists and forw
 | `SpikeDetector` — sudden jumps                  | `radiation-spikes`  |
 | `HeatmapAggregate` — geohash cells, 30 s window | `radiation-heatmap` |
 | `TopNHotspots` — worst N cells, 30 s window     | `radiation-top`     |
+
+---
+
+## Screenshots
+
+### Live monitoring console — world view
+
+<img width="1600" height="889" alt="image" src="https://github.com/user-attachments/assets/0a935069-4e56-45af-b1d1-b918ca0edb92" />
+
+
+Global view with 284 active sensors, a 35.2 CPM rolling average and a live alert feed. The trend chart (bottom-left) shows a max-CPM spike while the global average stays flat — a single sensor going hot without dragging down the mean. The configuration panel on the left drives the alert threshold, display region and ingestion speed at runtime.
+
+### Live monitoring console — Fukushima region
+
+<img width="1600" height="951" alt="image" src="https://github.com/user-attachments/assets/5a2b2c21-981c-48af-9757-1e8dfb1eeab7" />
+
+
+Zoomed into Japan: green tracks trace mobile sensors along roads out of Tokyo, while the elevated/high cluster in the north maps the Fukushima area. The live alert feed is all Fukushima-shi readings in the 190–250 CPM range.
+
+### Historical replay
+
+<img width="1600" height="887" alt="image" src="https://github.com/user-attachments/assets/fff17b04-3ebd-4f88-bf9d-d9d590ba8252" />
+
+
+The separate replay page loads a historical time window from TimescaleDB (here 5,000 readings across a 15-minute window) and animates it with play/pause, a speed control up to 300× and a timeline scrubber — 686 sensors on the map at this frame.
+
+### Kafka UI — topics
+
+<img width="1600" height="898" alt="image" src="https://github.com/user-attachments/assets/7e79f6ae-b392-4c3f-a20e-26b80b8f3e5f" />
+
+
+Topic view: `radiation-raw` (producer input) and `radiation-clean` (after validation) climb together, with the difference showing how many malformed readings the Flink filters dropped. High-volume topics use 12 partitions; the low-volume 30-second aggregate topics (`radiation-stats`, `radiation-top`) use 1.
+
+### Flink dashboard — running job
+
+<img width="1600" height="883" alt="image" src="https://github.com/user-attachments/assets/d7ec6dec-7ccb-45cc-9266-0a5028767519" />
+
+
+The `safecast-processing-pipeline` job running with all tasks healthy (15/15) and zero failures. Restart strategy is fixed-delay (5 attempts, 10 s apart).
 
 ---
 
@@ -155,8 +180,6 @@ Swagger(Documentation): <http://localhost:8000/docs>
 
 ## Cloud Deployment (AWS)
 
-# Cloud Deployment (AWS)
-
 Ubuntu 24.04 EC2 instance (**t3.2xlarge**, 8 vCPU / 32 GiB RAM, 60 GiB storage), region **eu-north-1 (Stockholm)**.
 Open ports **22, 5173, 8000** (and 8080/8081 for the demo — Kafka UI and Flink dashboard).
 
@@ -233,6 +256,7 @@ radiation-backend/  FastAPI: Kafka consumer, Redis cache, TimescaleDB, REST + We
 frontend/           React + Leaflet GUI
 docker-compose.yml  Full stack
 data/               Safecast dataset (not in Git)
+images/             Screenshots used in this README
 ```
 
 All development branches are preserved. `main` is the released state; features were merged via GitLab Merge Requests with peer review.
@@ -244,8 +268,8 @@ All development branches are preserved. `main` is the released state; features w
 | Member               | Responsibility                                                                                                 |
 | -------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Ayush Parab          | FastAPI backend , Redis, TimescaleDB, REST/WebSocket, replay feature                                           |
-| Roshin Roy           | Kafka data provider, Redis, Docker infrastructure / Backend Optimization / Frontend Configuration Features /Docker image creation     |
-| Roshan S             | Frontend Side Panel Features / Cloud Deployment                                                                                  |
+| Roshin Roy           | Kafka data provider, Redis, Docker infrastructure / Backend Optimization / Frontend Configuration Features     |
+| Roshan S             | Frontend Side Panel Features                                                                                   |
 | Mrudula Sachin Rothe | React / Leaflet map and dashboard / Flink Advanced Operators / Frontend WebSocket Integration / Backend models |
 | Chanakya Gummidipudi | Frontend Structure / Frontend Leaflet Map                                                                      |
 | Moniya Mohan         | Flink topology and operators, React / dashboard features / Backend Optimization                                |
